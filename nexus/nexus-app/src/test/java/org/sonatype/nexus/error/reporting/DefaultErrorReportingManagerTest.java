@@ -68,6 +68,26 @@ public class DefaultErrorReportingManagerTest
     }
 
     @Override
+    protected void customizeContext( final Context ctx )
+    {
+        ctx.put( "pr.serverUrl", "https://issues.sonatype.org" );
+        ctx.put( "pr.auth.login", "sonatype_problem_reporting" );
+        ctx.put( "pr.auth.password", "____" );
+        ctx.put( "pr.project", "SBOX" );
+        ctx.put( "pr.component", "Nexus" );
+        ctx.put( "pr.issuetype.default", "1" );
+        super.customizeContext( ctx );
+    }
+
+    @Override
+    protected void customizeContainerConfiguration( final ContainerConfiguration configuration )
+    {
+        super.customizeContainerConfiguration( configuration );
+        configuration.setClassPathScanning( "ON" );
+        configuration.setAutoWiring( true );
+    }
+
+    @Override
     protected void tearDown()
         throws Exception
     {
@@ -140,6 +160,7 @@ public class DefaultErrorReportingManagerTest
                                     manager.getValidJIRAPassword() );
 
         Assert.assertEquals( 1, issues.size() );
+        System.err.println( issues.get( 0 ).getLink() );
     }
 
     @Test

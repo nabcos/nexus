@@ -102,6 +102,9 @@ public class DefaultErrorReportingManager
     @Requirement( role = ErrorReportBundleContentContributor.class )
     private Map<String, ErrorReportBundleContentContributor> bundleExtraContent;
 
+    @Requirement
+    private IssueSubmitter issueSubmitter;
+
     private static final String DEFAULT_USERNAME = "sonatype_problem_reporting";
 
     private static final String ERROR_REPORT_DIR = "error-report-bundles";
@@ -476,11 +479,12 @@ public class DefaultErrorReportingManager
                 + ExceptionUtils.getFullStackTrace( request.getThrowable() ) );
         }
 
-        if ( useGlobalProxy )
-        {
-            subRequest.setProxyConfigurator( new NexusProxyServerConfigurator(
-                nexusConfig.getGlobalRemoteStorageContext(), getLogger() ) );
-        }
+        // TODO SAHC proxy support by request?
+        // if ( useGlobalProxy )
+        // {
+        // subRequest.setProxyConfigurator( new NexusProxyServerConfigurator(
+        // nexusConfig.getGlobalRemoteStorageContext(), getLogger() ) );
+        // }
 
         return subRequest;
     }
@@ -521,14 +525,7 @@ public class DefaultErrorReportingManager
     private IssueSubmitter getIssueSubmitter( String jiraUsername, String jiraPassword )
         throws IssueSubmissionException
     {
-        try
-        {
-            return new JiraIssueSubmitter( getJIRAUrl(), new DefaultAuthenticationSource( jiraUsername, jiraPassword ) );
-        }
-        catch ( InitializationException e )
-        {
-            throw new IssueSubmissionException( e.getMessage(), e );
-        }
+	return issueSubmitter;
     }
 
     public File assembleBundle( ErrorReportRequest request )
