@@ -20,6 +20,7 @@ package org.sonatype.nexus.error.reporting;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileFilter;
 import java.io.FileInputStream;
@@ -30,6 +31,7 @@ import java.net.MalformedURLException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Vector;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -57,6 +59,7 @@ import org.sonatype.nexus.proxy.repository.RemoteProxySettings;
 import org.sonatype.nexus.proxy.repository.UsernamePasswordRemoteAuthenticationSettings;
 import org.sonatype.nexus.scheduling.NexusTask;
 import org.sonatype.nexus.util.StringDigester;
+import org.sonatype.plexus.encryptor.PlexusEncryptor;
 import org.sonatype.scheduling.SchedulerTask;
 import org.sonatype.sisu.issue.IssueRetriever;
 import org.sonatype.sisu.pr.bundle.BundleManager;
@@ -76,6 +79,8 @@ public class DefaultErrorReportingManagerTest
 
     private StubJira mock;
 
+    private PlexusEncryptor encryptor;
+
     @Override
     protected void setUp()
         throws Exception
@@ -90,6 +95,8 @@ public class DefaultErrorReportingManagerTest
         nexusConfig = lookup( NexusConfiguration.class );
 
         manager = (DefaultErrorReportingManager) lookup( ErrorReportingManager.class );
+        
+        encryptor = lookup(PlexusEncryptor.class);
     }
 
     private void setupJiraMock( String dbPath )
@@ -98,12 +105,12 @@ public class DefaultErrorReportingManagerTest
         mock = new StubJira();
         FileInputStream in = null;
         try {
-        in = new FileInputStream(dbPath);
-        mock.setDatabase( IOUtil.toString( in ) );
-        List<AttachmentHandler> handlers = Arrays.<AttachmentHandler>asList( new MockAttachmentHandler( mock ) );
-        provider = new JettyServerProvider();
-        provider.addServlet( new JiraXmlRpcTestServlet( mock, provider.getUrl(), handlers ) );
-        provider.start();
+	        in = new FileInputStream(dbPath);
+	        mock.setDatabase( IOUtil.toString( in ) );
+	        List<AttachmentHandler> handlers = Arrays.<AttachmentHandler>asList( new MockAttachmentHandler( mock ) );
+	        provider = new JettyServerProvider();
+	        provider.addServlet( new JiraXmlRpcTestServlet( mock, provider.getUrl(), handlers ) );
+	        provider.start();
         } finally {
             IOUtil.close( in );
         }
@@ -126,15 +133,16 @@ public class DefaultErrorReportingManagerTest
         ctx.put( "pr.project", "SBOX" );
         ctx.put( "pr.component", "Nexus" );
         ctx.put( "pr.issuetype.default", "1" );
+        ctx.put( "pr.encryptor.publicKeyPath", "/apr/public-key.txt" );
         super.customizeContext( ctx );
     }
 
     @Override
     protected void customizeContainerConfiguration( final ContainerConfiguration configuration )
     {
-        super.customizeContainerConfiguration( configuration );
         configuration.setClassPathScanning( "ON" );
         configuration.setAutoWiring( true );
+        super.customizeContainerConfiguration( configuration );
     }
 
     @Override
@@ -433,10 +441,12 @@ public class DefaultErrorReportingManagerTest
         String msg = "Runtime exception " + Long.toHexString( System.currentTimeMillis() );
         ExceptionTask task = (ExceptionTask) lookup( SchedulerTask.class, "ExceptionTask" );
         task.setMessage( msg );
+        
+        String aprMessage = "APR: " + new RuntimeException( msg ).getMessage();
 
         // First make sure item doesn't already exist
         List<Issue> issues =
-            manager.retrieveIssues( "APR: " + new RuntimeException( msg ).getMessage(), manager.getValidJIRAUsername(),
+            manager.retrieveIssues( aprMessage, manager.getValidJIRAUsername(),
                                     manager.getValidJIRAPassword() );
 
         Assert.assertNull( issues );
@@ -444,7 +454,7 @@ public class DefaultErrorReportingManagerTest
         doCall( task );
 
         issues =
-            manager.retrieveIssues( "APR: " + new RuntimeException( msg ).getMessage(), manager.getValidJIRAUsername(),
+            manager.retrieveIssues( aprMessage, manager.getValidJIRAUsername(),
                                     manager.getValidJIRAPassword() );
 
         Assert.assertEquals( 1, issues.size() );
@@ -452,7 +462,7 @@ public class DefaultErrorReportingManagerTest
         doCall( task );
 
         issues =
-            manager.retrieveIssues( "APR: " + new RuntimeException( msg ).getMessage(), manager.getValidJIRAUsername(),
+            manager.retrieveIssues( aprMessage, manager.getValidJIRAUsername(),
                                     manager.getValidJIRAPassword() );
 
         Assert.assertEquals( 1, issues.size() );
@@ -474,9 +484,17 @@ public class DefaultErrorReportingManagerTest
     {
         IssueRetriever retriever = lookup(IssueRetriever.class);
         
+        
+        addBackupFiles( getConfHomeDir() );
+        addDirectory( "test-directory", new String[] {"filename1.file", "filename2.file", "filename3.file"} );
+        addDirectory( "nested-test-directory/more-nested-test-directory", new String[] { "filename1.file", "filename2.file", "filename3.file" } );
+        nexusConfiguration.saveConfiguration();
+        
+        
         // enableProxy();
         enableErrorReports( false );
 
+        
         ErrorReportRequest request = new ErrorReportRequest();
 
         String msg = "Test exception " + Long.toHexString( System.currentTimeMillis() );
@@ -489,9 +507,9 @@ public class DefaultErrorReportingManagerTest
                                     manager.getValidJIRAPassword() );
 
         Assert.assertNull( issues );
-
+        
         manager.handleError( request );
- 
+        
         issues = retriever.getIssues( msg );
         assertNotNull( issues );
         assertFalse(issues.isEmpty());
@@ -501,7 +519,6 @@ public class DefaultErrorReportingManagerTest
         assertEquals("APR: " + msg, issue.getSummary());
         
         String environment = issue.getEnvironment();
-        System.err.println(environment);
         assertFalse(environment.isEmpty());
         assertTrue(environment.contains( "Nexus" ));
         
@@ -518,8 +535,117 @@ public class DefaultErrorReportingManagerTest
         
         Map<Attachment, byte[]> attachments = mock.getAttachments( issue.getKey() );
         assertEquals(1, attachments.size());
-        String name = attachments.keySet().iterator().next().getFileName();
-        assertTrue(name .startsWith("nexus-error-bundle"));
+        Entry<Attachment, byte[]> entry = attachments.entrySet().iterator().next();
+        Attachment att = entry.getKey();
+        
+        assertTrue(att.getFileName().startsWith("ProblemReportBundle"));
+        
+        File zipfile = File.createTempFile( "DefaultErrorReportingManagerTest", ".zip");
+        FileOutputStream out = null;
+        try {
+	        out = new FileOutputStream( zipfile );
+	        encryptor.decrypt( new ByteArrayInputStream( entry.getValue() ), out, getClass().getResourceAsStream( "/apr/private-key.txt" ) );
+        } finally {
+            IOUtil.close( out );
+        }
+        
+        extractZipFile( zipfile, unzipHomeDir );
+        
+        zipfile.delete();
+
+        assertTrue( unzipHomeDir.exists() );
+
+        File[] files = unzipHomeDir.listFiles();
+
+        assertNotNull( files );
+        assertEquals( 6, files.length ); // TODO: was seven with the directory listing, but that was removed, as it OOM'd
+        
+        files = unzipHomeDir.listFiles( new FileFilter(){
+            public boolean accept( File pathname )
+            {
+                if ( pathname.isDirectory()
+                    && pathname.getName().equals( "test-directory" ) )
+                {
+                    return true;
+                }
+                
+                return false;
+            }
+        });
+        
+        assertEquals( 1, files.length );
+        
+        files = files[0].listFiles();
+        
+        boolean file1found = false;
+        boolean file2found = false;
+        boolean file3found = false;
+        for ( File file : files )
+        {
+            if ( file.getName().equals( "filename1.file" ) )
+            {
+                file1found = true;
+            }
+            else if ( file.getName().equals( "filename2.file" ) )
+            {
+                file2found = true;
+            }
+            else if ( file.getName().equals( "filename3.file" ) )
+            {
+                file3found = true;
+            }
+        }
+        
+        assertTrue( file1found && file2found && file3found );
+        
+        files = unzipHomeDir.listFiles( new FileFilter(){
+            public boolean accept( File pathname )
+            {
+                if ( pathname.isDirectory()
+                    && pathname.getName().equals( "nested-test-directory" ) )
+                {
+                    return true;
+                }
+                
+                return false;
+            }
+        });
+        
+        files = files[0].listFiles( new FileFilter(){
+           public boolean accept( File pathname )
+            {
+               if ( pathname.isDirectory()
+                   && pathname.getName().equals( "more-nested-test-directory" ) )
+               {
+                   return true;
+               }
+               
+               return false;
+            } 
+        });
+        
+        files = files[0].listFiles();
+        
+        file1found = false;
+        file2found = false;
+        file3found = false;
+        for ( File file : files )
+        {
+            if ( file.getName().equals( "filename1.file" ) )
+            {
+                file1found = true;
+            }
+            else if ( file.getName().equals( "filename2.file" ) )
+            {
+                file2found = true;
+            }
+            else if ( file.getName().equals( "filename3.file" ) )
+            {
+                file3found = true;
+            }
+        }
+        
+        assertTrue( file1found && file2found && file3found );
     }
 
 }

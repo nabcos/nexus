@@ -22,12 +22,15 @@ import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileFilter;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.security.GeneralSecurityException;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -39,13 +42,10 @@ import java.util.zip.ZipOutputStream;
 import org.codehaus.plexus.component.annotations.Component;
 import org.codehaus.plexus.component.annotations.Requirement;
 import org.codehaus.plexus.logging.Logger;
-import org.codehaus.plexus.personality.plexus.lifecycle.phase.InitializationException;
 import org.codehaus.plexus.swizzle.IssueSubmissionException;
 import org.codehaus.plexus.swizzle.IssueSubmissionRequest;
 import org.codehaus.plexus.swizzle.IssueSubmissionResult;
 import org.codehaus.plexus.swizzle.IssueSubmitter;
-import org.codehaus.plexus.swizzle.JiraIssueSubmitter;
-import org.codehaus.plexus.swizzle.jira.authentication.DefaultAuthenticationSource;
 import org.codehaus.plexus.util.ExceptionUtils;
 import org.codehaus.plexus.util.FileUtils;
 import org.codehaus.plexus.util.IOUtil;
@@ -69,6 +69,8 @@ import org.sonatype.nexus.util.StringDigester;
 import org.sonatype.plexus.encryptor.PlexusEncryptor;
 import org.sonatype.security.configuration.source.SecurityConfigurationSource;
 import org.sonatype.security.model.source.SecurityModelConfigurationSource;
+import org.sonatype.sisu.pr.bundle.Archiver;
+import org.sonatype.sisu.pr.bundle.Bundle;
 
 @Component( role = ErrorReportingManager.class )
 public class DefaultErrorReportingManager
@@ -104,7 +106,11 @@ public class DefaultErrorReportingManager
 
     @Requirement
     private IssueSubmitter issueSubmitter;
+    
+    @Requirement
+    private Archiver archiver;
 
+    
     private static final String DEFAULT_USERNAME = "sonatype_problem_reporting";
 
     private static final String ERROR_REPORT_DIR = "error-report-bundles";
@@ -166,26 +172,31 @@ public class DefaultErrorReportingManager
 
     // ==
 
+    @Override
     public boolean isEnabled()
     {
         return getCurrentConfiguration( false ).isEnabled();
     }
 
+    @Override
     public void setEnabled( boolean value )
     {
         getCurrentConfiguration( true ).setEnabled( value );
     }
 
+    @Override
     public String getJIRAUrl()
     {
         return getCurrentConfiguration( false ).getJiraUrl();
     }
 
+    @Override
     public void setJIRAUrl( String url )
     {
         getCurrentConfiguration( true ).setJiraUrl( url );
     }
 
+    @Override
     public String getJIRAUsername()
     {
         return getCurrentConfiguration( false ).getJiraUsername();
@@ -203,11 +214,13 @@ public class DefaultErrorReportingManager
         return username;
     }
 
+    @Override
     public void setJIRAUsername( String username )
     {
         getCurrentConfiguration( true ).setJiraUsername( username );
     }
 
+    @Override
     public String getJIRAPassword()
     {
         return getCurrentConfiguration( false ).getJiraPassword();
@@ -225,16 +238,19 @@ public class DefaultErrorReportingManager
         return password;
     }
 
+    @Override
     public void setJIRAPassword( String password )
     {
         getCurrentConfiguration( true ).setJiraPassword( password );
     }
 
+    @Override
     public String getJIRAProject()
     {
         return getCurrentConfiguration( false ).getJiraProject();
     }
 
+    @Override
     public void setJIRAProject( String pkey )
     {
         getCurrentConfiguration( true ).setJiraProject( pkey );
@@ -244,11 +260,13 @@ public class DefaultErrorReportingManager
      * the useGlobalProxy config is always ignored <br/>
      * TODO: remove this config? <br/>
      */
+    @Override
     public boolean isUseGlobalProxy()
     {
         return true;
     }
 
+    @Override
     public void setUseGlobalProxy( boolean val )
     {
         getCurrentConfiguration( true ).setUseGlobalProxy( val );
@@ -256,6 +274,7 @@ public class DefaultErrorReportingManager
 
     // ==
 
+    @Override
     public ErrorReportResponse handleError( ErrorReportRequest request, String jiraUsername, String jiraPassword,
                                             boolean useGlobalHttpProxy )
         throws IssueSubmissionException, IOException, GeneralSecurityException
@@ -271,55 +290,43 @@ public class DefaultErrorReportingManager
         {
             IssueSubmissionRequest subRequest = buildRequest( request, jiraUsername, useGlobalHttpProxy );
 
-            File unencryptedFile = subRequest.getProblemReportBundle();
-
-            encryptRequest( subRequest );
-
-            File encryptedFile = subRequest.getProblemReportBundle();
-
-            try
+            // manual, no check for existing
+            if ( request.getTitle() != null )
             {
-                // manual, no check for existing
-                if ( request.getTitle() != null )
+                IssueSubmissionResult result =
+                    getIssueSubmitter( jiraUsername, jiraPassword ).submitIssue( subRequest );
+                response.setCreated( true );
+                response.setJiraUrl( result.getIssueUrl() );
+                    
+		        writeArchive( result.getKey(), subRequest.getBundles() );
+                    
+                getLogger().info( "Generated problem report, ticket " + result.getIssueUrl() + " was created." );
+            }
+            else
+            {
+                List<Issue> existingIssues = retrieveIssues( subRequest.getSummary(), jiraUsername, jiraPassword );
+
+                if ( existingIssues == null )
                 {
                     IssueSubmissionResult result =
                         getIssueSubmitter( jiraUsername, jiraPassword ).submitIssue( subRequest );
                     response.setCreated( true );
                     response.setJiraUrl( result.getIssueUrl() );
-                    renameBundle( unencryptedFile, result.getKey() );
+                        
+			        writeArchive( result.getKey(), subRequest.getBundles() );
+		        
                     getLogger().info( "Generated problem report, ticket " + result.getIssueUrl() + " was created." );
                 }
                 else
                 {
-                    List<Issue> existingIssues = retrieveIssues( subRequest.getSummary(), jiraUsername, jiraPassword );
-
-                    if ( existingIssues == null )
-                    {
-                        IssueSubmissionResult result =
-                            getIssueSubmitter( jiraUsername, jiraPassword ).submitIssue( subRequest );
-                        response.setCreated( true );
-                        response.setJiraUrl( result.getIssueUrl() );
-                        renameBundle( unencryptedFile, result.getKey() );
-                        getLogger().info( "Generated problem report, ticket " + result.getIssueUrl() + " was created." );
-                    }
-                    else
-                    {
-                        response.setJiraUrl( existingIssues.get( 0 ).getLink() );
-                        renameBundle( unencryptedFile, existingIssues.iterator().next().getKey() );
-                        getLogger().info(
-                            "Not reporting problem as it already exists in database: "
-                                + existingIssues.iterator().next().getLink() );
-                    }
-                }
-                response.setSuccess( true );
-            }
-            finally
-            {
-                if ( encryptedFile != null )
-                {
-                    encryptedFile.delete();
+                    response.setJiraUrl( existingIssues.get( 0 ).getLink() );
+			        writeArchive( existingIssues.iterator().next().getKey(), subRequest.getBundles() );
+                    getLogger().info(
+                        "Not reporting problem as it already exists in database: "
+                            + existingIssues.iterator().next().getLink() );
                 }
             }
+            response.setSuccess( true );
         }
         else
         {
@@ -329,6 +336,17 @@ public class DefaultErrorReportingManager
         return response;
     }
 
+    private void writeArchive( String issueKey, Collection<Bundle> bundles )
+        throws IOException, FileNotFoundException
+    {
+        Bundle bundle = archiver.createArchive( bundles );
+        File zipFile = getZipFile( "nexus-error-bundle-" + issueKey, "zip" );
+        OutputStream output = new FileOutputStream( zipFile );
+        IOUtil.copy( bundle.getInputStream(), output );
+        IOUtil.close(output);
+    }
+
+    @Override
     public ErrorReportResponse handleError( ErrorReportRequest request )
         throws IssueSubmissionException, IOException, GeneralSecurityException
     {
@@ -386,7 +404,6 @@ public class DefaultErrorReportingManager
         return false;
     }
 
-    @SuppressWarnings( "unchecked" )
     protected List<Issue> retrieveIssues( String description, String jiraUsername, String jiraPassword )
     {
         Jira jira = null;
@@ -454,7 +471,7 @@ public class DefaultErrorReportingManager
 	        subRequest.setSummary( "MPR: " + request.getTitle() );
         }
 
-        subRequest.setProblemReportBundle( assembleBundle( request ) );
+//        subRequest.setProblemReportBundle( assembleBundle( request ) );
 
         return subRequest;
     }
@@ -498,6 +515,7 @@ public class DefaultErrorReportingManager
 	return issueSubmitter;
     }
 
+    @Override
     public File assembleBundle( ErrorReportRequest request )
         throws IOException
     {
@@ -649,6 +667,7 @@ public class DefaultErrorReportingManager
 
         File[] confFiles = confDir.listFiles( new FileFilter()
         {
+            @Override
             public boolean accept( File pathname )
             {
                 return !pathname.getName().endsWith( ".bak" ) && !pathname.getName().endsWith( "nexus.xml" )
@@ -742,6 +761,7 @@ public class DefaultErrorReportingManager
         }
     }
 
+    @Override
     public String getName()
     {
         return "Error Report Settings";
@@ -766,5 +786,5 @@ public class DefaultErrorReportingManager
         return false;
 
     }
-
+    
 }

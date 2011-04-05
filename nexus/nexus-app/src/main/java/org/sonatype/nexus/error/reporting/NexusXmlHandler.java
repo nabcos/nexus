@@ -38,14 +38,11 @@ import org.sonatype.sisu.pr.bundle.BundleAssembler;
 import org.sonatype.sisu.pr.bundle.ManagedBundle;
 import org.sonatype.sisu.pr.bundle.StorageManager;
 
-@Component(role = BundleAssembler.class)
+@Component(role = BundleAssembler.class, hint = "nexus.xml")
 public class NexusXmlHandler
     extends AbstractXmlHandler
     implements BundleAssembler
 {
-    @Requirement
-    private Logger logger;
-
     @Requirement
     private ConfigurationHelper configHelper;
     
@@ -92,9 +89,7 @@ public class NexusXmlHandler
     @Override
     public boolean isParticipating( IssueSubmissionRequest request )
     {
-        // FIXME enable
-        return false;
-//        return nexusConfig.getConfigurationModel() != null;
+        return nexusConfig.getConfigurationModel() != null;
     }
 
     @Override
