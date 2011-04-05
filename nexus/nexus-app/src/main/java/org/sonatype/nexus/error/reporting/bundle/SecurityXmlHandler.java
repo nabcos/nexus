@@ -16,46 +16,48 @@
  * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
  * All other trademarks are the property of their respective owners.
  */
-package org.sonatype.nexus.error.reporting;
+package org.sonatype.nexus.error.reporting.bundle;
 
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.util.List;
 
 import org.codehaus.plexus.component.annotations.Component;
 import org.codehaus.plexus.component.annotations.Requirement;
-import org.codehaus.plexus.logging.Logger;
 import org.codehaus.plexus.swizzle.IssueSubmissionException;
 import org.codehaus.plexus.swizzle.IssueSubmissionRequest;
 import org.codehaus.plexus.util.IOUtil;
 import org.sonatype.nexus.configuration.application.NexusConfiguration;
-import org.sonatype.nexus.configuration.model.Configuration;
-import org.sonatype.nexus.configuration.model.ConfigurationHelper;
-import org.sonatype.nexus.configuration.model.io.xpp3.NexusConfigurationXpp3Writer;
+import org.sonatype.security.model.CUser;
+import org.sonatype.security.model.Configuration;
+import org.sonatype.security.model.io.xpp3.SecurityConfigurationXpp3Writer;
+import org.sonatype.security.model.source.SecurityModelConfigurationSource;
 import org.sonatype.sisu.pr.bundle.Bundle;
 import org.sonatype.sisu.pr.bundle.BundleAssembler;
 import org.sonatype.sisu.pr.bundle.ManagedBundle;
 import org.sonatype.sisu.pr.bundle.StorageManager;
 
-@Component(role = BundleAssembler.class, hint = "nexus.xml")
-public class NexusXmlHandler
+@Component(role = BundleAssembler.class, hint = "security.xml")
+public class SecurityXmlHandler
     extends AbstractXmlHandler
     implements BundleAssembler
 {
     @Requirement
-    private ConfigurationHelper configHelper;
+    SecurityModelConfigurationSource source;
     
     @Requirement
-    private NexusConfiguration nexusConfig;
+    NexusConfiguration nexusConfig;
     
     @Requirement
-    private StorageManager storageManager;
+    StorageManager storageManager;
     
-    public File getFile( ConfigurationHelper configHelper, NexusConfiguration nexusConfig )
+    public File getFile( SecurityModelConfigurationSource source, NexusConfiguration nexusConfig )
         throws IOException
     {
-        Configuration configuration = configHelper.clone( nexusConfig.getConfigurationModel() );
+        Configuration configuration = 
+            ( Configuration ) cloneViaXml( source.getConfiguration() );
         
         // No config ?
         if ( configuration == null )
@@ -63,15 +65,19 @@ public class NexusXmlHandler
             return null;
         }
         
-        configHelper.maskPasswords( configuration );
+        for ( CUser user : ( List<CUser> ) configuration.getUsers() )
+        {
+            user.setPassword( PASSWORD_MASK );
+            user.setEmail( PASSWORD_MASK );
+        }
         
-        NexusConfigurationXpp3Writer writer = new NexusConfigurationXpp3Writer();
+        SecurityConfigurationXpp3Writer writer = new SecurityConfigurationXpp3Writer();
         FileWriter fWriter = null;
         File tempFile = null;
         
         try
         {
-            tempFile = new File( nexusConfig.getTemporaryDirectory(), "nexus.xml." + System.currentTimeMillis() );
+            tempFile = new File( nexusConfig.getTemporaryDirectory(), "security.xml." + System.currentTimeMillis() );
             fWriter = new FileWriter( tempFile );
             writer.write( fWriter, configuration );
         }
@@ -89,26 +95,33 @@ public class NexusXmlHandler
     @Override
     public boolean isParticipating( IssueSubmissionRequest request )
     {
-        return nexusConfig.getConfigurationModel() != null;
+        return source.getConfiguration() != null;
     }
 
     @Override
     public Bundle assemble( IssueSubmissionRequest request )
         throws IssueSubmissionException
-    {
-        OutputStream out = null;
+    {        
+        OutputStreamWriter out = null;
         try
         {
             ManagedBundle bundle = storageManager.createBundle( "nexus.xml", "application/xml" );
-            Configuration configuration = configHelper.clone( nexusConfig.getConfigurationModel() );
-            configHelper.maskPasswords( configuration );
-            NexusConfigurationXpp3Writer writer = new NexusConfigurationXpp3Writer();
+            Configuration configuration = 
+                            ( Configuration ) cloneViaXml( source.getConfiguration() );
+                                
+
+			for ( CUser user : ( List<CUser> ) configuration.getUsers() )
+			{
+			    user.setPassword( PASSWORD_MASK );
+			    user.setEmail( PASSWORD_MASK );
+			}
+            SecurityConfigurationXpp3Writer writer = new SecurityConfigurationXpp3Writer();
             
-            out = bundle.getOutputStream();
+            out = new OutputStreamWriter( bundle.getOutputStream() );
             writer.write( out, configuration );
             out.close();
             
-	        return bundle;
+            return bundle;
         }
         catch ( IOException e )
         {

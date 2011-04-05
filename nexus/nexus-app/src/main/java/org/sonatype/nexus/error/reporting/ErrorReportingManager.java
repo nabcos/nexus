@@ -32,35 +32,9 @@ public interface ErrorReportingManager
 
     void setEnabled( boolean value );
 
-    String getJIRAUrl();
-
-    void setJIRAUrl( String url );
-
-    String getJIRAProject();
-
-    void setJIRAProject( String pkey );
-
-    String getJIRAUsername();
-
-    void setJIRAUsername( String username );
-
-    String getJIRAPassword();
-
-    void setJIRAPassword( String password );
-
-    boolean isUseGlobalProxy();
-
-    void setUseGlobalProxy( boolean val );
-
     // ==
 
     ErrorReportResponse handleError( ErrorReportRequest request )
         throws IssueSubmissionException, IOException, GeneralSecurityException;
 
-    ErrorReportResponse handleError( ErrorReportRequest request, String jiraUsername, String jiraPassword,
-                                     boolean useGlobalHttpProxy )
-        throws IssueSubmissionException, IOException, GeneralSecurityException;
-
-    File assembleBundle( ErrorReportRequest request )
-        throws IOException;
 }

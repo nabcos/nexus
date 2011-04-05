@@ -159,21 +159,6 @@ public class DefaultErrorReportingManagerTest
         throws Exception
     {
         manager.setEnabled( true );
-        try
-        {
-           manager.setJIRAUrl( provider.getUrl().toString() );
-        }
-        catch ( MalformedURLException e )
-        {
-            e.printStackTrace();
-            manager.setJIRAUrl( "https://issues.sonatype.org" );
-        }
-        manager.setJIRAProject( "SBOX" );
-        AuthenticationSource credentials = lookup( AuthenticationSource.class );
-         manager.setJIRAUsername( credentials.getLogin() );
-         manager.setJIRAPassword( credentials.getPassword() );
-        manager.setUseGlobalProxy( useProxy );
-
         nexusConfig.saveConfiguration();
     }
 
@@ -208,163 +193,25 @@ public class DefaultErrorReportingManagerTest
 
         // First make sure item doesn't already exist
         List<Issue> issues =
-            manager.retrieveIssues( "APR: " + request.getThrowable().getMessage(), manager.getValidJIRAUsername(),
-                                    manager.getValidJIRAPassword() );
+            manager.retrieveIssues( "APR: " + request.getThrowable().getMessage() );
 
         Assert.assertNull( issues );
 
         manager.handleError( request );
 
         issues =
-            manager.retrieveIssues( "APR: " + request.getThrowable().getMessage(), manager.getValidJIRAUsername(),
-                                    manager.getValidJIRAPassword() );
+            manager.retrieveIssues( "APR: " + request.getThrowable().getMessage() );
 
         Assert.assertEquals( 1, issues.size() );
 
         manager.handleError( request );
 
         issues =
-            manager.retrieveIssues( "APR: " + request.getThrowable().getMessage(), manager.getValidJIRAUsername(),
-                                    manager.getValidJIRAPassword() );
+            manager.retrieveIssues( "APR: " + request.getThrowable().getMessage() );
 
         Assert.assertEquals( 1, issues.size() );
         System.err.println( issues.get( 0 ).getLink() );
     }
-
-    @Test
-    public void testPackageFiles()
-        throws Exception
-    {
-        addBackupFiles( getConfHomeDir() );
-        addDirectory( "test-directory", new String[] {"filename1.file", "filename2.file", "filename3.file"} );
-        addDirectory( "nested-test-directory/more-nested-test-directory", new String[] { "filename1.file", "filename2.file", "filename3.file" } );
-
-        Exception exception;
-
-        try
-        {
-            throw new Exception( "Test exception" );
-        }
-        catch ( Exception e )
-        {
-            exception = e;
-        }
-
-        manager.setEnabled( true );
-        manager.setJIRAProject( "NEXUS" );
-
-        nexusConfiguration.saveConfiguration();
-
-        ErrorReportRequest request = new ErrorReportRequest();
-        request.setThrowable( exception );
-
-        IssueSubmissionRequest subRequest =
-            manager.buildRequest( request, manager.getValidJIRAUsername(), manager.isUseGlobalProxy() );
-
-        // request is filled on submit, not on build
-//        assertEquals( "NEXUS", subRequest.getProjectId() );
-//        assertEquals( "APR: Test exception", subRequest.getSummary() );
-//        assertEquals( "The following exception occurred: " + StringDigester.LINE_SEPERATOR
-//            + ExceptionUtils.getFullStackTrace( exception ), subRequest.getDescription() );
-        assertNotNull( subRequest.getProblemReportBundle() );
-
-        extractZipFile( subRequest.getProblemReportBundle(), unzipHomeDir );
-
-        assertTrue( unzipHomeDir.exists() );
-
-        File[] files = unzipHomeDir.listFiles();
-
-        assertNotNull( files );
-        assertEquals( 6, files.length ); // TODO: was seven with the directory listing, but that was removed, as it OOM'd
-
-        files = unzipHomeDir.listFiles( new FileFilter(){
-            public boolean accept( File pathname )
-            {
-                if ( pathname.isDirectory()
-                    && pathname.getName().equals( "test-directory" ) )
-                {
-                    return true;
-                }
-
-                return false;
-            }
-        });
-
-        assertEquals( 1, files.length );
-
-        files = files[0].listFiles();
-
-        boolean file1found = false;
-        boolean file2found = false;
-        boolean file3found = false;
-        for ( File file : files )
-        {
-            if ( file.getName().equals( "filename1.file" ) )
-            {
-                file1found = true;
-            }
-            else if ( file.getName().equals( "filename2.file" ) )
-            {
-                file2found = true;
-            }
-            else if ( file.getName().equals( "filename3.file" ) )
-            {
-                file3found = true;
-            }
-        }
-
-        assertTrue( file1found && file2found && file3found );
-
-        files = unzipHomeDir.listFiles( new FileFilter(){
-            public boolean accept( File pathname )
-            {
-                if ( pathname.isDirectory()
-                    && pathname.getName().equals( "nested-test-directory" ) )
-                {
-                    return true;
-                }
-
-                return false;
-            }
-        });
-
-        files = files[0].listFiles( new FileFilter(){
-           public boolean accept( File pathname )
-            {
-               if ( pathname.isDirectory()
-                   && pathname.getName().equals( "more-nested-test-directory" ) )
-               {
-                   return true;
-               }
-
-               return false;
-            }
-        });
-
-        files = files[0].listFiles();
-
-        file1found = false;
-        file2found = false;
-        file3found = false;
-        for ( File file : files )
-        {
-            if ( file.getName().equals( "filename1.file" ) )
-            {
-                file1found = true;
-            }
-            else if ( file.getName().equals( "filename2.file" ) )
-            {
-                file2found = true;
-            }
-            else if ( file.getName().equals( "filename3.file" ) )
-            {
-                file3found = true;
-            }
-        }
-
-        assertTrue( file1found && file2found && file3found );
-    }
-    
 
     private void addBackupFiles( File dir )
         throws Exception
@@ -377,10 +224,10 @@ public class DefaultErrorReportingManagerTest
         throws Exception
     {
         File confDir = new File( getConfHomeDir(), path );
-        File unzipDir = new File( unzipHomeDir, path );
+//        File unzipDir = new File( unzipHomeDir, path );
         confDir.mkdirs();
-        unzipDir.mkdirs();
-
+//        unzipDir.mkdirs();
+        
         for ( String filename : filenames ){
             new File( confDir, filename ).createNewFile();
         }
@@ -391,6 +238,8 @@ public class DefaultErrorReportingManagerTest
     {
         FileInputStream fis = new FileInputStream( zipFile );
         ZipInputStream zin = null;
+        
+        outputDirectory.mkdirs();
 
         try
         {
@@ -399,7 +248,9 @@ public class DefaultErrorReportingManagerTest
             ZipEntry entry;
             while ( ( entry = zin.getNextEntry() ) != null )
             {
-                FileOutputStream fos = new FileOutputStream( new File( outputDirectory, entry.getName() ) );
+                File file = new File( outputDirectory, entry.getName() );
+                file.getParentFile().mkdirs();
+                FileOutputStream fos = new FileOutputStream( file );
                 BufferedOutputStream bos = null;
 
                 try
@@ -446,24 +297,21 @@ public class DefaultErrorReportingManagerTest
 
         // First make sure item doesn't already exist
         List<Issue> issues =
-            manager.retrieveIssues( aprMessage, manager.getValidJIRAUsername(),
-                                    manager.getValidJIRAPassword() );
+            manager.retrieveIssues( aprMessage );
 
         Assert.assertNull( issues );
 
         doCall( task );
 
         issues =
-            manager.retrieveIssues( aprMessage, manager.getValidJIRAUsername(),
-                                    manager.getValidJIRAPassword() );
+            manager.retrieveIssues( aprMessage );
 
         Assert.assertEquals( 1, issues.size() );
 
         doCall( task );
 
         issues =
-            manager.retrieveIssues( aprMessage, manager.getValidJIRAUsername(),
-                                    manager.getValidJIRAPassword() );
+            manager.retrieveIssues( aprMessage );
 
         Assert.assertEquals( 1, issues.size() );
     }
@@ -490,11 +338,9 @@ public class DefaultErrorReportingManagerTest
         addDirectory( "nested-test-directory/more-nested-test-directory", new String[] { "filename1.file", "filename2.file", "filename3.file" } );
         nexusConfiguration.saveConfiguration();
         
-        
         // enableProxy();
         enableErrorReports( false );
 
-        
         ErrorReportRequest request = new ErrorReportRequest();
 
         String msg = "Test exception " + Long.toHexString( System.currentTimeMillis() );
@@ -503,8 +349,7 @@ public class DefaultErrorReportingManagerTest
 
         // First make sure item doesn't already exist
         List<Issue> issues =
-            manager.retrieveIssues( "APR: " + request.getThrowable().getMessage(), manager.getValidJIRAUsername(),
-                                    manager.getValidJIRAPassword() );
+            manager.retrieveIssues( "APR: " + request.getThrowable().getMessage() );
 
         Assert.assertNull( issues );
         
@@ -558,9 +403,14 @@ public class DefaultErrorReportingManagerTest
         File[] files = unzipHomeDir.listFiles();
 
         assertNotNull( files );
-        assertEquals( 6, files.length ); // TODO: was seven with the directory listing, but that was removed, as it OOM'd
+         // TODO: was seven with the directory listing, but that was removed, as it OOM'd
+         // TODO: was six but assembling changed
+        assertEquals( 4, files.length );
+        System.err.println(Arrays.toString( files ));
         
-        files = unzipHomeDir.listFiles( new FileFilter(){
+        File unzippedConfDir = new File(unzipHomeDir, "conf");
+        
+        files = unzippedConfDir.listFiles( new FileFilter(){
             public boolean accept( File pathname )
             {
                 if ( pathname.isDirectory()
@@ -598,7 +448,7 @@ public class DefaultErrorReportingManagerTest
         
         assertTrue( file1found && file2found && file3found );
         
-        files = unzipHomeDir.listFiles( new FileFilter(){
+        files = unzippedConfDir.listFiles( new FileFilter(){
             public boolean accept( File pathname )
             {
                 if ( pathname.isDirectory()

@@ -16,7 +16,7 @@
  * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
  * All other trademarks are the property of their respective owners.
  */
-package org.sonatype.nexus.error.reporting;
+package org.sonatype.nexus.error.reporting.bundle;
 
 import com.thoughtworks.xstream.XStream;
 
