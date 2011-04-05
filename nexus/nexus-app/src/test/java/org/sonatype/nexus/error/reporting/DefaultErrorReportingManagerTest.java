@@ -29,6 +29,8 @@ import java.io.IOException;
 import java.net.MalformedURLException;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.Vector;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -41,6 +43,8 @@ import org.codehaus.plexus.swizzle.IssueSubmissionRequest;
 import org.codehaus.plexus.swizzle.jira.authentication.AuthenticationSource;
 import org.codehaus.plexus.util.ExceptionUtils;
 import org.codehaus.plexus.util.IOUtil;
+import org.codehaus.swizzle.jira.Attachment;
+import org.codehaus.swizzle.jira.Component;
 import org.codehaus.swizzle.jira.Issue;
 import org.sonatype.configuration.ConfigurationException;
 import org.sonatype.jira.AttachmentHandler;
@@ -54,7 +58,8 @@ import org.sonatype.nexus.proxy.repository.UsernamePasswordRemoteAuthenticationS
 import org.sonatype.nexus.scheduling.NexusTask;
 import org.sonatype.nexus.util.StringDigester;
 import org.sonatype.scheduling.SchedulerTask;
-import org.sonatype.tests.http.runner.api.SuiteConfigurator;
+import org.sonatype.sisu.issue.IssueRetriever;
+import org.sonatype.sisu.pr.bundle.BundleManager;
 import org.sonatype.tests.http.server.jetty.impl.JettyServerProvider;
 
 
@@ -68,6 +73,8 @@ public class DefaultErrorReportingManagerTest
     private File unzipHomeDir = null;
 
     private JettyServerProvider provider;
+
+    private StubJira mock;
 
     @Override
     protected void setUp()
@@ -88,7 +95,7 @@ public class DefaultErrorReportingManagerTest
     private void setupJiraMock( String dbPath )
         throws FileNotFoundException, IOException, Exception, MalformedURLException
     {
-        StubJira mock = new StubJira();
+        mock = new StubJira();
         FileInputStream in = null;
         try {
         in = new FileInputStream(dbPath);
@@ -246,10 +253,11 @@ public class DefaultErrorReportingManagerTest
         IssueSubmissionRequest subRequest =
             manager.buildRequest( request, manager.getValidJIRAUsername(), manager.isUseGlobalProxy() );
 
-        assertEquals( "NEXUS", subRequest.getProjectId() );
-        assertEquals( "APR: Test exception", subRequest.getSummary() );
-        assertEquals( "The following exception occurred: " + StringDigester.LINE_SEPERATOR
-            + ExceptionUtils.getFullStackTrace( exception ), subRequest.getDescription() );
+        // request is filled on submit, not on build
+//        assertEquals( "NEXUS", subRequest.getProjectId() );
+//        assertEquals( "APR: Test exception", subRequest.getSummary() );
+//        assertEquals( "The following exception occurred: " + StringDigester.LINE_SEPERATOR
+//            + ExceptionUtils.getFullStackTrace( exception ), subRequest.getDescription() );
         assertNotNull( subRequest.getProblemReportBundle() );
 
         extractZipFile( subRequest.getProblemReportBundle(), unzipHomeDir );
@@ -348,6 +356,7 @@ public class DefaultErrorReportingManagerTest
 
         assertTrue( file1found && file2found && file3found );
     }
+    
 
     private void addBackupFiles( File dir )
         throws Exception
@@ -459,6 +468,58 @@ public class DefaultErrorReportingManagerTest
         catch ( Throwable t )
         {
         }
+    }
+    
+    public void testIssueContents() throws Exception
+    {
+        IssueRetriever retriever = lookup(IssueRetriever.class);
+        
+        // enableProxy();
+        enableErrorReports( false );
+
+        ErrorReportRequest request = new ErrorReportRequest();
+
+        String msg = "Test exception " + Long.toHexString( System.currentTimeMillis() );
+        Exception e = new Exception( msg );
+        request.setThrowable( e );
+
+        // First make sure item doesn't already exist
+        List<Issue> issues =
+            manager.retrieveIssues( "APR: " + request.getThrowable().getMessage(), manager.getValidJIRAUsername(),
+                                    manager.getValidJIRAPassword() );
+
+        Assert.assertNull( issues );
+
+        manager.handleError( request );
+ 
+        issues = retriever.getIssues( msg );
+        assertNotNull( issues );
+        assertFalse(issues.isEmpty());
+        assertEquals( 1, issues.size() );
+        
+        Issue issue = issues.get( 0 );
+        assertEquals("APR: " + msg, issue.getSummary());
+        
+        String environment = issue.getEnvironment();
+        System.err.println(environment);
+        assertFalse(environment.isEmpty());
+        assertTrue(environment.contains( "Nexus" ));
+        
+        assertEquals("sonatype_problem_reporting", issue.getReporter().getName());
+        assertEquals("sonatype_problem_reporting", issue.getAssignee().getName());
+        
+        assertEquals("SBOX", issue.getProject().getKey());
+        
+        assertNotNull( issue.getDescription() );
+        assertTrue( issue.getDescription().contains( e.getStackTrace()[0].toString() ) );
+        
+        Component component = retriever.getComponent( issue.getProject(), "Nexus" );
+        assertTrue(issue.getComponents().contains( component ));
+        
+        Map<Attachment, byte[]> attachments = mock.getAttachments( issue.getKey() );
+        assertEquals(1, attachments.size());
+        String name = attachments.keySet().iterator().next().getFileName();
+        assertTrue(name .startsWith("nexus-error-bundle"));
     }
 
 }

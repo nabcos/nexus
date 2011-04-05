@@ -22,13 +22,21 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 
+import javax.inject.Named;
+
+import org.codehaus.plexus.swizzle.IssueSubmissionException;
+import org.codehaus.plexus.swizzle.IssueSubmissionRequest;
 import org.sonatype.nexus.configuration.application.NexusConfiguration;
 import org.sonatype.security.configuration.model.SecurityConfiguration;
 import org.sonatype.security.configuration.model.io.xpp3.SecurityConfigurationXpp3Writer;
 import org.sonatype.security.configuration.source.SecurityConfigurationSource;
+import org.sonatype.sisu.pr.bundle.Bundle;
+import org.sonatype.sisu.pr.bundle.BundleAssembler;
 
+@Named
 public class SecurityConfigurationXmlHandler
     extends AbstractXmlHandler
+    implements BundleAssembler
 {
     public File getFile( SecurityConfigurationSource source, NexusConfiguration nexusConfig )
         throws IOException
@@ -63,5 +71,20 @@ public class SecurityConfigurationXmlHandler
         }
         
         return tempFile;
+    }
+
+    @Override
+    public boolean isParticipating( IssueSubmissionRequest request )
+    {
+        // TODO Auto-generated method stub
+        return false;
+    }
+
+    @Override
+    public Bundle assemble( IssueSubmissionRequest request )
+        throws IssueSubmissionException
+    {
+        // TODO Auto-generated method stub
+        return null;
     }
 }

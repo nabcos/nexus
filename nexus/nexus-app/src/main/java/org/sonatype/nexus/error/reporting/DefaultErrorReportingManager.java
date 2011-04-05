@@ -442,49 +442,19 @@ public class DefaultErrorReportingManager
     protected IssueSubmissionRequest buildRequest( ErrorReportRequest request, String username, boolean useGlobalProxy )
         throws IOException
     {
-        String summary = null;
 
+        IssueSubmissionRequest subRequest = new IssueSubmissionRequest(request.getThrowable());
+        
         if ( request.getTitle() != null )
         {
-            summary = "MPR: " + request.getTitle();
-        }
-        else
-        {
-            summary = "APR: " + request.getThrowable().getMessage();
-        }
-
-        if ( summary.length() > 255 )
-        {
-            summary = summary.substring( 0, 254 );
+	        if ( request.getDescription() != null )
+	        {
+	            subRequest.setDescription( request.getDescription() );
+	        }
+	        subRequest.setSummary( "MPR: " + request.getTitle() );
         }
 
-        IssueSubmissionRequest subRequest = new IssueSubmissionRequest();
-
-        subRequest.setProjectId( getJIRAProject() );
-        subRequest.setSummary( summary );
         subRequest.setProblemReportBundle( assembleBundle( request ) );
-        subRequest.setReporter( username );
-        subRequest.setComponent( errorReportComponent.getComponent() );
-        subRequest.setEnvironment( assembleEnvironment( request ) );
-
-        // use description if set
-        if ( request.getDescription() != null )
-        {
-            subRequest.setDescription( request.getDescription() );
-        }
-        // otherwise pull from throwable
-        else if ( request.getThrowable() != null )
-        {
-            subRequest.setDescription( "The following exception occurred: " + StringDigester.LINE_SEPERATOR
-                + ExceptionUtils.getFullStackTrace( request.getThrowable() ) );
-        }
-
-        // TODO SAHC proxy support by request?
-        // if ( useGlobalProxy )
-        // {
-        // subRequest.setProxyConfigurator( new NexusProxyServerConfigurator(
-        // nexusConfig.getGlobalRemoteStorageContext(), getLogger() ) );
-        // }
 
         return subRequest;
     }
