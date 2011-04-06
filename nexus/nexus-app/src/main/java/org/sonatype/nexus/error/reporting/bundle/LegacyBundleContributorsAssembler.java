@@ -16,9 +16,9 @@ import org.sonatype.nexus.error.report.ErrorReportBundleContentContributor;
 import org.sonatype.nexus.error.report.ErrorReportBundleEntry;
 import org.sonatype.sisu.pr.bundle.Bundle;
 import org.sonatype.sisu.pr.bundle.BundleAssembler;
+import org.sonatype.sisu.pr.bundle.DirBundle;
 import org.sonatype.sisu.pr.bundle.ManagedBundle;
 import org.sonatype.sisu.pr.bundle.StorageManager;
-import org.sonatype.sisu.pr.bundle.internal.DirBundle;
 
 @Component( role = BundleAssembler.class, hint = "legacy-contributors" )
 public class LegacyBundleContributorsAssembler

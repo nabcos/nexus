@@ -9,7 +9,7 @@ import org.codehaus.plexus.swizzle.IssueSubmissionRequest;
 import org.sonatype.nexus.configuration.application.NexusConfiguration;
 import org.sonatype.sisu.pr.bundle.Bundle;
 import org.sonatype.sisu.pr.bundle.BundleAssembler;
-import org.sonatype.sisu.pr.bundle.internal.FileBundle;
+import org.sonatype.sisu.pr.bundle.FileBundle;
 
 @Component( role = BundleAssembler.class, hint = "logfile" )
 public class LogFilesBundleAssembler
