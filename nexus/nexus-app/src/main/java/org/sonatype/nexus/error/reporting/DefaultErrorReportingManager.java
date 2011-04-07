@@ -18,18 +18,15 @@
  */
 package org.sonatype.nexus.error.reporting;
 
-import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.security.GeneralSecurityException;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 import org.codehaus.plexus.component.annotations.Component;
@@ -39,13 +36,12 @@ import org.codehaus.plexus.swizzle.IssueSubmissionException;
 import org.codehaus.plexus.swizzle.IssueSubmissionRequest;
 import org.codehaus.plexus.swizzle.IssueSubmissionResult;
 import org.codehaus.plexus.swizzle.IssueSubmitter;
-import org.codehaus.plexus.util.ExceptionUtils;
+import org.codehaus.plexus.swizzle.jira.authentication.DefaultAuthenticationSource;
 import org.codehaus.plexus.util.IOUtil;
 import org.codehaus.plexus.util.StringUtils;
 import org.codehaus.swizzle.jira.Issue;
 import org.codehaus.swizzle.jira.Project;
 import org.sonatype.configuration.ConfigurationException;
-import org.sonatype.nexus.ApplicationStatusSource;
 import org.sonatype.nexus.configuration.AbstractConfigurable;
 import org.sonatype.nexus.configuration.Configurator;
 import org.sonatype.nexus.configuration.CoreConfiguration;
@@ -170,32 +166,52 @@ public class DefaultErrorReportingManager
     public ErrorReportResponse handleError( ErrorReportRequest request )
         throws IssueSubmissionException, IOException, GeneralSecurityException
     {
+        return handleError(request, null);
+    }
+
+    @Override
+    public ErrorReportResponse handleError( ErrorReportRequest request, String jiraUsername, String jiraPassword )
+        throws IssueSubmissionException, IOException, GeneralSecurityException
+    {
         getLogger().error( "Detected Error in Nexus", request.getThrowable() );
+        DefaultAuthenticationSource credentials = new DefaultAuthenticationSource( jiraUsername, jiraPassword );
         
+        return handleError( request, credentials );
+    }
+
+    private ErrorReportResponse handleError( ErrorReportRequest request, DefaultAuthenticationSource credentials )
+        throws IOException, FileNotFoundException, IssueSubmissionException
+    {
         ErrorReportResponse response = new ErrorReportResponse();
         
+        IssueSubmissionRequest subRequest = prepareRequest( request, response );
+        
+        if ( subRequest != null && ! subRequest.isSkipSubmission() )
+        {
+            submitIssue( response, subRequest, credentials );
+        }
+        response.setSuccess( true );
+        
+        return response;
+    }
+
+    private IssueSubmissionRequest prepareRequest( ErrorReportRequest request, ErrorReportResponse response )
+        throws IOException, FileNotFoundException
+    {
+        IssueSubmissionRequest subRequest = null;
         // if title is not null, this is a manual report, so we will generate regardless
         // of other checks
         if ( request.getTitle() != null
             || ( isEnabled() && shouldHandleReport( request ) && !shouldIgnore( request.getThrowable() ) ) )
         {
-            IssueSubmissionRequest subRequest = buildRequest( request, null, false );
+            subRequest = buildRequest( request, null, false );
         
-            // manual, no check for existing
-            if ( request.getTitle() != null )
-            {
-                submitIssue( response, subRequest );
-            }
-            else
+            if ( request.getTitle() == null )
             {
                 List<Issue> existingIssues = retrieveIssues( subRequest.getSummary() );
         
-                if ( existingIssues == null )
-                {
-                    submitIssue( response, subRequest );
-                }
-                else
-                {
+                if ( existingIssues != null ) {
+                    subRequest.setSkipSubmission( true );
                     response.setJiraUrl( existingIssues.get( 0 ).getLink() );
         	        writeArchive( existingIssues.iterator().next().getKey(), subRequest.getBundles() );
                     getLogger().info(
@@ -203,21 +219,15 @@ public class DefaultErrorReportingManager
                             + existingIssues.iterator().next().getLink() );
                 }
             }
-            response.setSuccess( true );
         }
-        else
-        {
-            response.setSuccess( true );
-        }
-        
-        return response;
+        return subRequest;
     }
 
-    private void submitIssue( ErrorReportResponse response, IssueSubmissionRequest subRequest )
+    private void submitIssue( ErrorReportResponse response, IssueSubmissionRequest subRequest, DefaultAuthenticationSource credentials )
         throws IssueSubmissionException, IOException, FileNotFoundException
     {
-        IssueSubmissionResult result =
-            issueSubmitter.submit( subRequest );
+        
+        IssueSubmissionResult result = credentials == null ? issueSubmitter.submit( subRequest ) : issueSubmitter.submit( subRequest, credentials );
         response.setCreated( true );
         response.setJiraUrl( result.getIssueUrl() );
             
@@ -292,71 +302,7 @@ public class DefaultErrorReportingManager
 	        subRequest.setSummary( "MPR: " + request.getTitle() );
         }
 
-//        subRequest.setProblemReportBundle( assembleBundle( request ) );
-
         return subRequest;
-    }
-
-    // TODO: this should be replaced with a call to FileUtil, but first we need to make sure that will not eat memory
-    // too
-    // private File getFileListing()
-    // throws IOException
-    // {
-    // return writeStringToTempFile( FileListingHelper.buildFileListing( nexusConfig.getWorkingDirectory() ),
-    // "fileListing.txt" );
-    // }
-
-    // TODO hanzelm
-    private File getExceptionListing( Throwable t )
-        throws IOException
-    {
-        return writeStringToTempFile( ExceptionUtils.getFullStackTrace( t ), "exceptionListing.txt" );
-    }
-
-    // TODO hanzelm
-    private File getContextListing( Map<String, Object> context )
-        throws IOException
-    {
-        StringBuffer sb = new StringBuffer();
-
-        for ( String key : context.keySet() )
-        {
-            sb.append( "key: " + key );
-            sb.append( FileListingHelper.LINE_SEPERATOR );
-
-            Object o = context.get( key );
-            sb.append( "value: " + o == null ? "null" : o.toString() );
-            sb.append( FileListingHelper.LINE_SEPERATOR );
-            sb.append( FileListingHelper.LINE_SEPERATOR );
-        }
-
-        return writeStringToTempFile( sb.toString(), "contextListing.txt" );
-    }
-
-    private File writeStringToTempFile( String text, String name )
-        throws IOException
-    {
-        File tempFile = null;
-
-        BufferedWriter bWriter = null;
-
-        try
-        {
-            tempFile = new File( nexusConfig.getTemporaryDirectory(), name + "." + System.currentTimeMillis() );
-
-            bWriter = new BufferedWriter( new FileWriter( tempFile ) );
-
-            bWriter.write( text );
-        }
-        finally
-        {
-            if ( bWriter != null )
-            {
-                bWriter.close();
-            }
-        }
-
-        return tempFile;
     }
 
     private File getZipFile( String prefix, String suffix )
