@@ -18,7 +18,6 @@
  */
 package org.sonatype.nexus.error.reporting;
 
-import java.io.File;
 import java.io.IOException;
 import java.security.GeneralSecurityException;
 
@@ -39,5 +38,22 @@ public interface ErrorReportingManager
     
     ErrorReportResponse handleError( ErrorReportRequest request, String jiraUsername, String jiraPassword)
         throws IssueSubmissionException, IOException, GeneralSecurityException;
+
+    ErrorReportResponse handleError( org.sonatype.nexus.error.reporting.ErrorReportRequest genReq, String jiraUsername,
+                                     String jiraPassword, boolean useGlobalProxy )
+        throws IssueSubmissionException, IOException, GeneralSecurityException;
+
+    void setJIRAUsername( String username );
+
+    void setJIRAPassword( String password );
+
+    String getJIRAUsername();
+
+    String getJIRAPassword();
+
+    boolean isUseGlobalProxy();
+
+    void setUseGlobalProxy( boolean useGlobalProxy );
+
 
 }

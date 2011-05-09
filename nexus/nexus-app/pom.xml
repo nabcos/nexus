@@ -138,6 +138,10 @@
       		<artifactId>xml-apis</artifactId>
       		<groupId>xml-apis</groupId>
       	</exclusion>
+        <exclusion>
+          <artifactId>junit</artifactId>
+          <groupId>junit</groupId>
+        </exclusion>
       </exclusions>
     </dependency>
 
@@ -225,6 +229,10 @@
     		<exclusion>
     			<artifactId>commons-logging</artifactId>
     			<groupId>commons-logging</groupId>
+    		</exclusion>
+    		<exclusion>
+    			<artifactId>junit</artifactId>
+    			<groupId>junit</groupId>
     		</exclusion>
     	</exclusions>
     </dependency>

@@ -36,6 +36,7 @@ import org.codehaus.plexus.swizzle.IssueSubmissionException;
 import org.codehaus.plexus.swizzle.IssueSubmissionRequest;
 import org.codehaus.plexus.swizzle.IssueSubmissionResult;
 import org.codehaus.plexus.swizzle.IssueSubmitter;
+import org.codehaus.plexus.swizzle.jira.authentication.AuthenticationSource;
 import org.codehaus.plexus.swizzle.jira.authentication.DefaultAuthenticationSource;
 import org.codehaus.plexus.util.IOUtil;
 import org.codehaus.plexus.util.StringUtils;
@@ -49,7 +50,7 @@ import org.sonatype.nexus.configuration.application.ApplicationConfiguration;
 import org.sonatype.nexus.configuration.application.NexusConfiguration;
 import org.sonatype.nexus.configuration.model.CErrorReporting;
 import org.sonatype.nexus.configuration.model.CErrorReportingCoreConfiguration;
-import org.sonatype.nexus.util.StringDigester;
+import org.sonatype.nexus.util.DigesterUtils;
 import org.sonatype.sisu.issue.IssueRetriever;
 import org.sonatype.sisu.pr.ProjectManager;
 import org.sonatype.sisu.pr.bundle.Archiver;
@@ -81,6 +82,10 @@ public class DefaultErrorReportingManager
     private static final String ERROR_REPORT_DIR = "error-report-bundles";
 
     private Set<String> errorHashSet = new HashSet<String>();
+
+    private String username;
+
+    private String password;
 
     // ==
 
@@ -166,7 +171,14 @@ public class DefaultErrorReportingManager
     public ErrorReportResponse handleError( ErrorReportRequest request )
         throws IssueSubmissionException, IOException, GeneralSecurityException
     {
-        return handleError(request, null);
+        AuthenticationSource auth = null;
+
+        if ( username != null && password != null )
+        {
+            auth = new DefaultAuthenticationSource( username, password );
+        }
+
+        return handleError( request, auth );
     }
 
     @Override
@@ -179,7 +191,16 @@ public class DefaultErrorReportingManager
         return handleError( request, credentials );
     }
 
-    private ErrorReportResponse handleError( ErrorReportRequest request, DefaultAuthenticationSource credentials )
+    @Override
+    public ErrorReportResponse handleError( ErrorReportRequest genReq, String jiraUsername, String jiraPassword,
+                                            boolean useGlobalProxy )
+        throws IssueSubmissionException, IOException, GeneralSecurityException
+    {
+        // FIXME do something
+        return null;
+    }
+
+    private ErrorReportResponse handleError( ErrorReportRequest request, AuthenticationSource credentials )
         throws IOException, FileNotFoundException, IssueSubmissionException
     {
         ErrorReportResponse response = new ErrorReportResponse();
@@ -223,7 +244,8 @@ public class DefaultErrorReportingManager
         return subRequest;
     }
 
-    private void submitIssue( ErrorReportResponse response, IssueSubmissionRequest subRequest, DefaultAuthenticationSource credentials )
+    private void submitIssue( ErrorReportResponse response, IssueSubmissionRequest subRequest,
+                              AuthenticationSource credentials )
         throws IssueSubmissionException, IOException, FileNotFoundException
     {
         
@@ -246,8 +268,7 @@ public class DefaultErrorReportingManager
 
         if ( request.getThrowable() != null && StringUtils.isNotEmpty( request.getThrowable().getMessage() ) )
         {
-            @SuppressWarnings( "deprecation" )
-            String hash = StringDigester.getSha1Digest( request.getThrowable().getMessage() );
+            String hash = DigesterUtils.getSha1Digest( request.getThrowable().getMessage() );
 
             if ( errorHashSet.contains( hash ) )
             {
@@ -340,6 +361,43 @@ public class DefaultErrorReportingManager
         }
 
         return false;
+    }
+
+    @Override
+    public void setJIRAUsername( String username )
+    {
+        this.username = username;
+    }
+
+    @Override
+    public void setJIRAPassword( String password )
+    {
+        this.password = password;
+    }
+
+    @Override
+    public String getJIRAUsername()
+    {
+        return username;
+    }
+
+    @Override
+    public String getJIRAPassword()
+    {
+        return password;
+    }
+
+    @Override
+    public boolean isUseGlobalProxy()
+    {
+        // FIXME do something
+        return false;
+    }
+
+    @Override
+    public void setUseGlobalProxy( boolean useGlobalProxy )
+    {
+        // FIXME do something
     }
 
 }
