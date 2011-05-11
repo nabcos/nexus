@@ -105,6 +105,15 @@ public class DefaultErrorReportingManager
         {
             configure( getApplicationConfiguration() );
         }
+
+        CErrorReporting config = getCurrentConfiguration( false );
+        issueSubmitter.setServerUrl( config.getJiraUrl() );
+        issueRetriever.setServerUrl( config.getJiraUrl() );
+
+        AuthenticationSource credentials =
+            new DefaultAuthenticationSource( config.getJiraUsername(), config.getJiraPassword() );
+        issueSubmitter.setCredentials( credentials );
+        issueRetriever.setCredentials( credentials );
     }
 
     @Override
