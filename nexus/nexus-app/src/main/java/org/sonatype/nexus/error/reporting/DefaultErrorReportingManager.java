@@ -27,6 +27,7 @@ import java.security.GeneralSecurityException;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import org.codehaus.plexus.component.annotations.Component;
@@ -43,6 +44,7 @@ import org.codehaus.plexus.util.StringUtils;
 import org.codehaus.swizzle.jira.Issue;
 import org.codehaus.swizzle.jira.Project;
 import org.sonatype.configuration.ConfigurationException;
+import org.sonatype.inject.Parameters;
 import org.sonatype.nexus.configuration.AbstractConfigurable;
 import org.sonatype.nexus.configuration.Configurator;
 import org.sonatype.nexus.configuration.CoreConfiguration;
@@ -78,6 +80,10 @@ public class DefaultErrorReportingManager
     
     @Requirement
     private Archiver archiver;
+
+    @Requirement
+    @Parameters
+    private Map<String, String> parameters;
 
     private static final String ERROR_REPORT_DIR = "error-report-bundles";
 
@@ -375,25 +381,25 @@ public class DefaultErrorReportingManager
     @Override
     public void setJIRAUsername( String username )
     {
-        this.username = username;
+        getCurrentConfiguration( true ).setJiraUsername( username );
     }
 
     @Override
     public void setJIRAPassword( String password )
     {
-        this.password = password;
+        getCurrentConfiguration( true ).setJiraPassword( password );
     }
 
     @Override
     public String getJIRAUsername()
     {
-        return username;
+        return getCurrentConfiguration( false ).getJiraUsername();
     }
 
     @Override
     public String getJIRAPassword()
     {
-        return password;
+        return getCurrentConfiguration( false ).getJiraPassword();
     }
 
     @Override

@@ -32,22 +32,17 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.Vector;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
-import org.junit.Assert;
-import org.junit.Test;
-
 import org.codehaus.plexus.ContainerConfiguration;
 import org.codehaus.plexus.context.Context;
-import org.codehaus.plexus.swizzle.IssueSubmissionRequest;
-import org.codehaus.plexus.swizzle.jira.authentication.AuthenticationSource;
-import org.codehaus.plexus.util.ExceptionUtils;
 import org.codehaus.plexus.util.IOUtil;
 import org.codehaus.swizzle.jira.Attachment;
 import org.codehaus.swizzle.jira.Component;
 import org.codehaus.swizzle.jira.Issue;
+import org.junit.Assert;
+import org.junit.Test;
 import org.sonatype.configuration.ConfigurationException;
 import org.sonatype.jira.AttachmentHandler;
 import org.sonatype.jira.mock.MockAttachmentHandler;
@@ -58,17 +53,18 @@ import org.sonatype.nexus.configuration.application.NexusConfiguration;
 import org.sonatype.nexus.proxy.repository.RemoteProxySettings;
 import org.sonatype.nexus.proxy.repository.UsernamePasswordRemoteAuthenticationSettings;
 import org.sonatype.nexus.scheduling.NexusTask;
-import org.sonatype.nexus.util.StringDigester;
 import org.sonatype.plexus.encryptor.PlexusEncryptor;
 import org.sonatype.scheduling.SchedulerTask;
 import org.sonatype.sisu.issue.IssueRetriever;
-import org.sonatype.sisu.pr.bundle.BundleManager;
 import org.sonatype.tests.http.server.jetty.impl.JettyServerProvider;
-
 
 public class DefaultErrorReportingManagerTest
     extends AbstractNexusTestCase
 {
+    private static final String PR_PASS = "_____";
+
+    private static final String PR_USER = "sonatype_problem_reporting";
+
     private DefaultErrorReportingManager manager;
 
     private NexusConfiguration nexusConfig;
@@ -81,6 +77,7 @@ public class DefaultErrorReportingManagerTest
 
     private PlexusEncryptor encryptor;
 
+    @SuppressWarnings( "deprecation" )
     @Override
     protected void setUp()
         throws Exception
@@ -93,6 +90,9 @@ public class DefaultErrorReportingManagerTest
         unzipHomeDir.mkdirs();
 
         nexusConfig = lookup( NexusConfiguration.class );
+        nexusConfig.getConfigurationModel().getErrorReporting().setJiraUrl( provider.getUrl().toString() );
+        nexusConfig.getConfigurationModel().getErrorReporting().setJiraUsername( PR_USER );
+        nexusConfig.getConfigurationModel().getErrorReporting().setJiraPassword( PR_PASS );
 
         manager = (DefaultErrorReportingManager) lookup( ErrorReportingManager.class );
         
@@ -104,16 +104,23 @@ public class DefaultErrorReportingManagerTest
     {
         mock = new StubJira();
         FileInputStream in = null;
-        try {
-	        in = new FileInputStream(dbPath);
-	        mock.setDatabase( IOUtil.toString( in ) );
-	        List<AttachmentHandler> handlers = Arrays.<AttachmentHandler>asList( new MockAttachmentHandler( mock ) );
-	        provider = new JettyServerProvider();
-	        provider.addServlet( new JiraXmlRpcTestServlet( mock, provider.getUrl(), handlers ) );
-	        provider.start();
-        } finally {
+        try
+        {
+            in = new FileInputStream( dbPath );
+            mock.setDatabase( IOUtil.toString( in ) );
+        }
+        finally
+        {
             IOUtil.close( in );
         }
+
+        MockAttachmentHandler mockHandler = new MockAttachmentHandler();
+        mockHandler.setMock( mock );
+
+        List<AttachmentHandler> handlers = Arrays.<AttachmentHandler> asList( mockHandler );
+        provider = new JettyServerProvider();
+        provider.addServlet( new JiraXmlRpcTestServlet( mock, provider.getUrl(), handlers ) );
+        provider.start();
     }
 
     @Override
@@ -126,10 +133,10 @@ public class DefaultErrorReportingManagerTest
         catch ( MalformedURLException e )
         {
             e.printStackTrace();
-	        ctx.put( "pr.serverUrl", "https://issues.sonatype.org" );
+            ctx.put( "pr.serverUrl", "https://issues.sonatype.org" );
         }
-        ctx.put( "pr.auth.login", "sonatype_problem_reporting" );
-        ctx.put( "pr.auth.password", "____" );
+        ctx.put( "pr.auth.login", PR_USER );
+        ctx.put( "pr.auth.password", PR_PASS );
         ctx.put( "pr.project", "SBOX" );
         ctx.put( "pr.component", "Nexus" );
         ctx.put( "pr.issuetype.default", "1" );
@@ -192,22 +199,19 @@ public class DefaultErrorReportingManagerTest
         }
 
         // First make sure item doesn't already exist
-        List<Issue> issues =
-            manager.retrieveIssues( "APR: " + request.getThrowable().getMessage() );
+        List<Issue> issues = manager.retrieveIssues( "APR: " + request.getThrowable().getMessage() );
 
         Assert.assertNull( issues );
 
         manager.handleError( request );
 
-        issues =
-            manager.retrieveIssues( "APR: " + request.getThrowable().getMessage() );
+        issues = manager.retrieveIssues( "APR: " + request.getThrowable().getMessage() );
 
         Assert.assertEquals( 1, issues.size() );
 
         manager.handleError( request );
 
-        issues =
-            manager.retrieveIssues( "APR: " + request.getThrowable().getMessage() );
+        issues = manager.retrieveIssues( "APR: " + request.getThrowable().getMessage() );
 
         Assert.assertEquals( 1, issues.size() );
         System.err.println( issues.get( 0 ).getLink() );
@@ -224,11 +228,12 @@ public class DefaultErrorReportingManagerTest
         throws Exception
     {
         File confDir = new File( getConfHomeDir(), path );
-//        File unzipDir = new File( unzipHomeDir, path );
+        // File unzipDir = new File( unzipHomeDir, path );
         confDir.mkdirs();
-//        unzipDir.mkdirs();
-        
-        for ( String filename : filenames ){
+        // unzipDir.mkdirs();
+
+        for ( String filename : filenames )
+        {
             new File( confDir, filename ).createNewFile();
         }
     }
@@ -292,26 +297,23 @@ public class DefaultErrorReportingManagerTest
         String msg = "Runtime exception " + Long.toHexString( System.currentTimeMillis() );
         ExceptionTask task = (ExceptionTask) lookup( SchedulerTask.class, "ExceptionTask" );
         task.setMessage( msg );
-        
+
         String aprMessage = "APR: " + new RuntimeException( msg ).getMessage();
 
         // First make sure item doesn't already exist
-        List<Issue> issues =
-            manager.retrieveIssues( aprMessage );
+        List<Issue> issues = manager.retrieveIssues( aprMessage );
 
         Assert.assertNull( issues );
 
         doCall( task );
 
-        issues =
-            manager.retrieveIssues( aprMessage );
+        issues = manager.retrieveIssues( aprMessage );
 
         Assert.assertEquals( 1, issues.size() );
 
         doCall( task );
 
-        issues =
-            manager.retrieveIssues( aprMessage );
+        issues = manager.retrieveIssues( aprMessage );
 
         Assert.assertEquals( 1, issues.size() );
     }
