@@ -54,6 +54,7 @@ import org.sonatype.nexus.configuration.application.ApplicationConfiguration;
 import org.sonatype.nexus.configuration.application.NexusConfiguration;
 import org.sonatype.nexus.configuration.model.CErrorReporting;
 import org.sonatype.nexus.configuration.model.CErrorReportingCoreConfiguration;
+import org.sonatype.nexus.error.reporting.bundle.MapContentsBundle;
 import org.sonatype.nexus.util.DigesterUtils;
 import org.sonatype.sisu.issue.IssueRetriever;
 import org.sonatype.sisu.pr.ProjectManager;
@@ -372,6 +373,8 @@ public class DefaultErrorReportingManager
 	        }
 	        subRequest.setSummary( "MPR: " + request.getTitle() );
         }
+
+        assembler.addBundle( subRequest, new MapContentsBundle( request.getContext() ) );
 
         return subRequest;
     }
