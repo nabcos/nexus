@@ -18,8 +18,6 @@
  */
 package org.sonatype.nexus.error.reporting.bundle;
 
-import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.util.List;
@@ -66,7 +64,7 @@ public class SecurityXmlHandler
         OutputStreamWriter out = null;
         try
         {
-            ManagedBundle bundle = storageManager.createBundle( "nexus.xml", "application/xml" );
+            ManagedBundle bundle = storageManager.createBundle( "security.xml", "application/xml" );
             Configuration configuration = 
                             ( Configuration ) cloneViaXml( source.getConfiguration() );
                                 
@@ -87,7 +85,7 @@ public class SecurityXmlHandler
         catch ( IOException e )
         {
             IOUtil.close( out );
-            throw new IssueSubmissionException( "Could not assemble nexus.xml: " + e.getMessage(), e );
+            throw new IssueSubmissionException( "Could not assemble security.xml: " + e.getMessage(), e );
         }
     }
 }

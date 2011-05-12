@@ -18,6 +18,10 @@
  */
 package org.sonatype.nexus.error.reporting;
 
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.is;
+
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.ByteArrayInputStream;
@@ -29,6 +33,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -56,6 +61,8 @@ import org.sonatype.nexus.scheduling.NexusTask;
 import org.sonatype.plexus.encryptor.PlexusEncryptor;
 import org.sonatype.scheduling.SchedulerTask;
 import org.sonatype.sisu.issue.IssueRetriever;
+import org.sonatype.sisu.pr.bundle.Bundle;
+import org.sonatype.sisu.pr.bundle.internal.ByteArrayBundle;
 import org.sonatype.tests.http.server.jetty.impl.JettyServerProvider;
 
 public class DefaultErrorReportingManagerTest
@@ -498,6 +505,17 @@ public class DefaultErrorReportingManagerTest
         }
         
         assertTrue( file1found && file2found && file3found );
+    }
+
+    @Test
+    public void testWriteIntermediateArchive()
+        throws FileNotFoundException, IOException
+    {
+        Bundle bundle = new ByteArrayBundle( "TestBundle".getBytes( "utf-8" ), "testname.txt", "text/plain" );
+        File file = manager.writeArchive( Collections.singleton( bundle ) );
+
+        assertThat( file.exists(), is( true ) );
+        assertThat( file.getAbsolutePath(), containsString( DefaultErrorReportingManager.ERROR_REPORT_DIR ) );
     }
 
 }

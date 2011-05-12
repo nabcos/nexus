@@ -22,6 +22,7 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.security.GeneralSecurityException;
 import java.util.Collection;
@@ -39,6 +40,7 @@ import org.codehaus.plexus.swizzle.IssueSubmissionResult;
 import org.codehaus.plexus.swizzle.IssueSubmitter;
 import org.codehaus.plexus.swizzle.jira.authentication.AuthenticationSource;
 import org.codehaus.plexus.swizzle.jira.authentication.DefaultAuthenticationSource;
+import org.codehaus.plexus.util.FileUtils;
 import org.codehaus.plexus.util.IOUtil;
 import org.codehaus.plexus.util.StringUtils;
 import org.codehaus.swizzle.jira.Issue;
@@ -57,6 +59,7 @@ import org.sonatype.sisu.issue.IssueRetriever;
 import org.sonatype.sisu.pr.ProjectManager;
 import org.sonatype.sisu.pr.bundle.Archiver;
 import org.sonatype.sisu.pr.bundle.Bundle;
+import org.sonatype.sisu.pr.bundle.BundleManager;
 
 @Component( role = ErrorReportingManager.class )
 public class DefaultErrorReportingManager
@@ -82,16 +85,16 @@ public class DefaultErrorReportingManager
     private Archiver archiver;
 
     @Requirement
+    private BundleManager assembler;
+
+    @Requirement
     @Parameters
     private Map<String, String> parameters;
 
-    private static final String ERROR_REPORT_DIR = "error-report-bundles";
+    /* UT */ static final String ERROR_REPORT_DIR = "error-report-bundles";
 
     private Set<String> errorHashSet = new HashSet<String>();
 
-    private String username;
-
-    private String password;
 
     // ==
 
@@ -172,14 +175,41 @@ public class DefaultErrorReportingManager
 
     // ==
 
-    private void writeArchive( String issueKey, Collection<Bundle> bundles )
+    /* UT */File writeArchive( Collection<Bundle> bundles )
         throws IOException, FileNotFoundException
     {
         Bundle bundle = archiver.createArchive( bundles );
-        File zipFile = getZipFile( "nexus-error-bundle-" + issueKey, "zip" );
-        OutputStream output = new FileOutputStream( zipFile );
-        IOUtil.copy( bundle.getInputStream(), output );
-        IOUtil.close(output);
+
+        File zipFile = getZipFile( "nexus-error-bundle", "zip" );
+        OutputStream output = null;
+        InputStream input = null;
+
+        try
+        {
+            output = new FileOutputStream( zipFile );
+            input = bundle.getInputStream();
+            IOUtil.copy( input, output );
+        }
+        finally
+        {
+            IOUtil.close( input );
+            IOUtil.close( output );
+        }
+
+        return zipFile;
+    }
+
+    protected void renameFile( File bundle, String jiraTicket )
+        throws IOException
+    {
+        if ( StringUtils.isNotEmpty( jiraTicket ) )
+        {
+            String filename = bundle.getAbsolutePath();
+
+            String newfilename = filename.replace( "nexus-error-bundle", "nexus-error-bundle-" + jiraTicket );
+
+            FileUtils.rename( bundle, new File( newfilename ) );
+        }
     }
 
     @Override
@@ -188,6 +218,8 @@ public class DefaultErrorReportingManager
     {
         AuthenticationSource auth = null;
 
+        String username = getJIRAUsername();
+        String password = getJIRAPassword();
         if ( username != null && password != null )
         {
             auth = new DefaultAuthenticationSource( username, password );
@@ -212,7 +244,7 @@ public class DefaultErrorReportingManager
         throws IssueSubmissionException, IOException, GeneralSecurityException
     {
         // FIXME do something
-        return null;
+        throw new UnsupportedOperationException();
     }
 
     private ErrorReportResponse handleError( ErrorReportRequest request, AuthenticationSource credentials )
@@ -240,7 +272,7 @@ public class DefaultErrorReportingManager
         if ( request.getTitle() != null
             || ( isEnabled() && shouldHandleReport( request ) && !shouldIgnore( request.getThrowable() ) ) )
         {
-            subRequest = buildRequest( request, null, false );
+            subRequest = buildRequest( request );
         
             if ( request.getTitle() == null )
             {
@@ -249,7 +281,7 @@ public class DefaultErrorReportingManager
                 if ( existingIssues != null ) {
                     subRequest.setSkipSubmission( true );
                     response.setJiraUrl( existingIssues.get( 0 ).getLink() );
-        	        writeArchive( existingIssues.iterator().next().getKey(), subRequest.getBundles() );
+        	        renameFile( writeArchive( subRequest.getBundles() ), existingIssues.iterator().next().getKey() );
                     getLogger().info(
                         "Not reporting problem as it already exists in database: "
                             + existingIssues.iterator().next().getLink() );
@@ -263,12 +295,15 @@ public class DefaultErrorReportingManager
                               AuthenticationSource credentials )
         throws IssueSubmissionException, IOException, FileNotFoundException
     {
+        List<Bundle> bundles = assembler.assemble( subRequest );
+        subRequest.setBundles( bundles );
+        File file = writeArchive( bundles );
         
         IssueSubmissionResult result = credentials == null ? issueSubmitter.submit( subRequest ) : issueSubmitter.submit( subRequest, credentials );
         response.setCreated( true );
         response.setJiraUrl( result.getIssueUrl() );
-            
-        writeArchive( result.getKey(), subRequest.getBundles() );
+
+        renameFile( file, result.getKey() );
             
         getLogger().info( "Generated problem report, ticket " + result.getIssueUrl() + " was created." );
     }
@@ -323,7 +358,7 @@ public class DefaultErrorReportingManager
         return null;
     }
 
-    protected IssueSubmissionRequest buildRequest( ErrorReportRequest request, String username, boolean useGlobalProxy )
+    protected IssueSubmissionRequest buildRequest( ErrorReportRequest request )
         throws IOException
     {
 
@@ -413,6 +448,13 @@ public class DefaultErrorReportingManager
     public void setUseGlobalProxy( boolean useGlobalProxy )
     {
         // FIXME do something
+    }
+
+    @Override
+    public File assembleBundle( ErrorReportRequest request )
+        throws IOException, IssueSubmissionException
+    {
+        return writeArchive( assembler.assemble( buildRequest( request ) ) );
     }
 
 }

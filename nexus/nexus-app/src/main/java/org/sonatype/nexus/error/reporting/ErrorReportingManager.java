@@ -18,6 +18,7 @@
  */
 package org.sonatype.nexus.error.reporting;
 
+import java.io.File;
 import java.io.IOException;
 import java.security.GeneralSecurityException;
 
@@ -55,5 +56,7 @@ public interface ErrorReportingManager
 
     void setUseGlobalProxy( boolean useGlobalProxy );
 
+    File assembleBundle( ErrorReportRequest request )
+        throws IssueSubmissionException, IOException;
 
 }
