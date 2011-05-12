@@ -68,6 +68,8 @@ import org.sonatype.tests.http.server.jetty.impl.JettyServerProvider;
 public class DefaultErrorReportingManagerTest
     extends AbstractNexusTestCase
 {
+    private static final String PR_PROJECT = "SBOX";
+
     private static final String PR_PASS = "_____";
 
     private static final String PR_USER = "sonatype_problem_reporting";
@@ -100,6 +102,7 @@ public class DefaultErrorReportingManagerTest
         nexusConfig.getConfigurationModel().getErrorReporting().setJiraUrl( provider.getUrl().toString() );
         nexusConfig.getConfigurationModel().getErrorReporting().setJiraUsername( PR_USER );
         nexusConfig.getConfigurationModel().getErrorReporting().setJiraPassword( PR_PASS );
+        nexusConfig.getConfigurationModel().getErrorReporting().setJiraProject( PR_PROJECT );
 
         manager = (DefaultErrorReportingManager) lookup( ErrorReportingManager.class );
         
@@ -144,7 +147,7 @@ public class DefaultErrorReportingManagerTest
         }
         ctx.put( "pr.auth.login", PR_USER );
         ctx.put( "pr.auth.password", PR_PASS );
-        ctx.put( "pr.project", "SBOX" );
+        ctx.put( "pr.project", PR_PROJECT );
         ctx.put( "pr.component", "Nexus" );
         ctx.put( "pr.issuetype.default", "1" );
         ctx.put( "pr.encryptor.publicKeyPath", "/apr/public-key.txt" );
@@ -379,7 +382,7 @@ public class DefaultErrorReportingManagerTest
         assertEquals("sonatype_problem_reporting", issue.getReporter().getName());
         assertEquals("sonatype_problem_reporting", issue.getAssignee().getName());
         
-        assertEquals("SBOX", issue.getProject().getKey());
+        assertEquals(PR_PROJECT, issue.getProject().getKey());
         
         assertNotNull( issue.getDescription() );
         assertTrue( issue.getDescription().contains( e.getStackTrace()[0].toString() ) );
