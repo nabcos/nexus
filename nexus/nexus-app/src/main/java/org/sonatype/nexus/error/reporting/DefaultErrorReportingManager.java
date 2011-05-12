@@ -28,7 +28,6 @@ import java.security.GeneralSecurityException;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 import org.codehaus.plexus.component.annotations.Component;
@@ -46,7 +45,6 @@ import org.codehaus.plexus.util.StringUtils;
 import org.codehaus.swizzle.jira.Issue;
 import org.codehaus.swizzle.jira.Project;
 import org.sonatype.configuration.ConfigurationException;
-import org.sonatype.inject.Parameters;
 import org.sonatype.nexus.configuration.AbstractConfigurable;
 import org.sonatype.nexus.configuration.Configurator;
 import org.sonatype.nexus.configuration.CoreConfiguration;
@@ -54,6 +52,7 @@ import org.sonatype.nexus.configuration.application.ApplicationConfiguration;
 import org.sonatype.nexus.configuration.application.NexusConfiguration;
 import org.sonatype.nexus.configuration.model.CErrorReporting;
 import org.sonatype.nexus.configuration.model.CErrorReportingCoreConfiguration;
+import org.sonatype.nexus.error.report.ErrorReportComponent;
 import org.sonatype.nexus.error.reporting.bundle.MapContentsBundle;
 import org.sonatype.nexus.util.DigesterUtils;
 import org.sonatype.sisu.issue.IssueRetriever;
@@ -89,10 +88,11 @@ public class DefaultErrorReportingManager
     private BundleManager assembler;
 
     @Requirement
-    @Parameters
-    private Map<String, String> parameters;
+    private ErrorReportComponent errorReportComponent;
 
     /* UT */ static final String ERROR_REPORT_DIR = "error-report-bundles";
+
+    private static final String DEFAULT_USERNAME = "sonatype_problem_reporting";
 
     private Set<String> errorHashSet = new HashSet<String>();
 
@@ -121,7 +121,7 @@ public class DefaultErrorReportingManager
         issueRetriever.setServerUrl( config.getJiraUrl() );
 
         AuthenticationSource credentials =
-            new DefaultAuthenticationSource( config.getJiraUsername(), config.getJiraPassword() );
+            new DefaultAuthenticationSource( getValidJIRAUsername(), getValidJIRAPassword() );
         issueSubmitter.setCredentials( credentials );
         issueRetriever.setCredentials( credentials );
     }
@@ -374,6 +374,11 @@ public class DefaultErrorReportingManager
 	        subRequest.setSummary( "MPR: " + request.getTitle() );
         }
 
+        subRequest.setProjectKey( getJIRAProject() );
+        subRequest.setComponent( errorReportComponent.getComponent() );
+        subRequest.setReporter( getValidJIRAUsername() );
+        subRequest.setAssignee( getValidJIRAUsername() );
+
         assembler.addBundle( subRequest, new MapContentsBundle( request.getContext() ) );
 
         return subRequest;
@@ -434,10 +439,44 @@ public class DefaultErrorReportingManager
         return getCurrentConfiguration( false ).getJiraUsername();
     }
 
+    private String getValidJIRAUsername()
+    {
+        String username = getJIRAUsername();
+
+        if ( StringUtils.isEmpty( username ) )
+        {
+            username = DEFAULT_USERNAME;
+        }
+
+        return username;
+    }
+
     @Override
     public String getJIRAPassword()
     {
         return getCurrentConfiguration( false ).getJiraPassword();
+    }
+
+    private String getValidJIRAPassword()
+    {
+        String password = getJIRAPassword();
+
+        if ( StringUtils.isEmpty( password ) )
+        {
+            password = DEFAULT_USERNAME;
+        }
+
+        return password;
+    }
+
+    public String getJIRAProject()
+    {
+        return getCurrentConfiguration( false ).getJiraProject();
+    }
+
+    public void setJIRAProject( String pkey )
+    {
+        getCurrentConfiguration( true ).setJiraProject( pkey );
     }
 
     @Override
