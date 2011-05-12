@@ -18,8 +18,6 @@
  */
 package org.sonatype.nexus.error.reporting.bundle;
 
-import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.io.OutputStream;
 
@@ -51,6 +49,7 @@ public class NexusXmlHandler
     @Requirement
     private StorageManager storageManager;
     
+    @SuppressWarnings( "deprecation" )
     @Override
     public boolean isParticipating( IssueSubmissionRequest request )
     {
@@ -65,7 +64,10 @@ public class NexusXmlHandler
         try
         {
             ManagedBundle bundle = storageManager.createBundle( "nexus.xml", "application/xml" );
+
+            @SuppressWarnings( "deprecation" )
             Configuration configuration = configHelper.clone( nexusConfig.getConfigurationModel() );
+
             configHelper.maskPasswords( configuration );
             NexusConfigurationXpp3Writer writer = new NexusConfigurationXpp3Writer();
             

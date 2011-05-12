@@ -18,8 +18,6 @@
  */
 package org.sonatype.nexus.error.reporting.bundle;
 
-import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
