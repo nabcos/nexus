@@ -41,7 +41,7 @@ public class Nexus2379MultipleErrorReportIT
     {        
         RequestFacade.sendMessage( "service/local/exception?status=500", Method.GET, null );
         
-        ErrorReportUtil.validateZipContents( nexusWorkDir );
+        ErrorReportUtil.validateZipContents( nexusWorkDir, true );
         
         ErrorReportUtil.cleanErrorBundleDir( nexusWorkDir );
         
@@ -89,6 +89,6 @@ public class Nexus2379MultipleErrorReportIT
         
         RequestFacade.sendMessage( "service/local/exception?status=501", Method.GET, null );
         
-        ErrorReportUtil.validateZipContents( nexusWorkDir );
+        ErrorReportUtil.validateZipContents( nexusWorkDir, true );
     }
 }

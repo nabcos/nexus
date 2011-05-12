@@ -51,7 +51,7 @@ public class Nexus2213ErrorReportBundleIT
         Status s = RequestFacade.sendMessage( "service/local/exception?status=500", Method.GET, null ).getStatus();
         Assert.assertEquals( 500, s.getCode() );
 
-        ErrorReportUtil.validateZipContents( nexusWorkDir );
+        ErrorReportUtil.validateZipContents( nexusWorkDir, true );
     }
 
     @Test
