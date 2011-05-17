@@ -93,6 +93,8 @@ public class DefaultErrorReportingManager
     /* UT */ static final String ERROR_REPORT_DIR = "error-report-bundles";
 
     private static final String DEFAULT_USERNAME = "sonatype_problem_reporting";
+    
+    private static final String DEFAULT_URL = "https://issues.sonatype.org";
 
     private Set<String> errorHashSet = new HashSet<String>();
 
@@ -117,8 +119,18 @@ public class DefaultErrorReportingManager
         }
 
         CErrorReporting config = getCurrentConfiguration( false );
-        issueSubmitter.setServerUrl( config.getJiraUrl() );
-        issueRetriever.setServerUrl( config.getJiraUrl() );
+        if ( config != null )
+        {
+            issueSubmitter.setServerUrl( config.getJiraUrl() );
+            issueRetriever.setServerUrl( config.getJiraUrl() );
+        }
+        else
+        {
+            issueSubmitter.setServerUrl( DEFAULT_URL );
+            issueRetriever.setServerUrl( DEFAULT_URL );
+        }
+
+
 
         AuthenticationSource credentials =
             new DefaultAuthenticationSource( getValidJIRAUsername(), getValidJIRAPassword() );
@@ -436,7 +448,16 @@ public class DefaultErrorReportingManager
     @Override
     public String getJIRAUsername()
     {
-        return getCurrentConfiguration( false ).getJiraUsername();
+        CErrorReporting config = getCurrentConfiguration( false );
+
+        if ( config != null )
+        {
+            return config.getJiraUsername();
+        }
+        else
+        {
+            return null;
+        }
     }
 
     private String getValidJIRAUsername()
@@ -454,7 +475,16 @@ public class DefaultErrorReportingManager
     @Override
     public String getJIRAPassword()
     {
-        return getCurrentConfiguration( false ).getJiraPassword();
+        CErrorReporting config = getCurrentConfiguration( false );
+
+        if ( config != null )
+        {
+            return config.getJiraPassword();
+        }
+        else
+        {
+            return null;
+        }
     }
 
     private String getValidJIRAPassword()
