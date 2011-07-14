@@ -23,6 +23,11 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import org.codehaus.plexus.component.annotations.Requirement;
 import org.sonatype.nexus.configuration.ConfigurationPrepareForSaveEvent;
@@ -47,6 +52,7 @@ import org.sonatype.nexus.proxy.item.uid.IsGroupLocalOnlyAttribute;
 import org.sonatype.nexus.proxy.mapping.RequestRepositoryMapper;
 import org.sonatype.nexus.proxy.registry.RepositoryRegistry;
 import org.sonatype.nexus.proxy.utils.RepositoryStringUtils;
+import org.sonatype.nexus.threads.NexusThreadFactory;
 import org.sonatype.plexus.appevents.Event;
 
 /**
@@ -58,11 +64,25 @@ public abstract class AbstractGroupRepository
     extends AbstractRepository
     implements GroupRepository
 {
+    private static final long THREAD_KEEPALIVE_TIMEOUT = 60L;
+
+    private static final int MAX_RETRIEVAL_THREADS = 50;
+
     @Requirement
     private RepositoryRegistry repoRegistry;
 
     @Requirement
     private RequestRepositoryMapper requestRepositoryMapper;
+
+    private ExecutorService executor;
+
+    public AbstractGroupRepository()
+    {
+        NexusThreadFactory threadFactory =
+            new NexusThreadFactory( "nx-grouprepo-retrieval", "GroupRepository Item Retrieval" );
+
+        executor = Executors.newCachedThreadPool( threadFactory );
+    }
 
     @Override
     protected AbstractGroupRepositoryConfiguration getExternalConfiguration( boolean forWrite )
@@ -125,7 +145,7 @@ public abstract class AbstractGroupRepository
     }
 
     @Override
-    protected Collection<StorageItem> doListItems( ResourceStoreRequest request )
+    protected Collection<StorageItem> doListItems( final ResourceStoreRequest request )
         throws ItemNotFoundException, StorageException
     {
         HashSet<String> names = new HashSet<String>();
@@ -147,30 +167,29 @@ public abstract class AbstractGroupRepository
         final boolean isRequestGroupLocalOnly =
             request.isRequestGroupLocalOnly() || uid.getBooleanAttributeValue( IsGroupLocalOnlyAttribute.class );
 
+        List<Repository> memberRepositories = getMemberRepositories();
+        List<Future<Collection<StorageItem>>> futures =
+            new ArrayList<Future<Collection<StorageItem>>>( memberRepositories.size() );
+
         if ( !isRequestGroupLocalOnly )
         {
-            for ( Repository repo : getMemberRepositories() )
+            for ( final Repository repo : memberRepositories )
             {
                 if ( !request.getProcessedRepositories().contains( repo.getId() ) )
                 {
-                    try
+                    // NEXUS-4353 run item listings in parallel
+                    Future<Collection<StorageItem>> future = executor.submit( new Callable<Collection<StorageItem>>()
                     {
-                        addItems( names, result, repo.list( false, request ) );
+                        @Override
+                        public Collection<StorageItem> call()
+                            throws Exception
+                        {
+                            Collection<StorageItem> item = repo.list( false, request );
 
-                        found = true;
-                    }
-                    catch ( ItemNotFoundException e )
-                    {
-                        // ignored
-                    }
-                    catch ( IllegalOperationException e )
-                    {
-                        // ignored
-                    }
-                    catch ( StorageException e )
-                    {
-                        // ignored
-                    }
+                            return item;
+                        }
+                    } );
+                    futures.add( future );
                 }
                 else
                 {
@@ -184,6 +203,38 @@ public abstract class AbstractGroupRepository
                                 + "' was already processed during this request! This repository is skipped from processing. Request: "
                                 + request.toString() );
                     }
+                }
+            }
+        }
+
+        for ( Future<Collection<StorageItem>> future : futures )
+        {
+            try
+            {
+                Collection<StorageItem> items = future.get();
+                addItems( names, result, items );
+
+                found = true;
+            }
+            catch ( InterruptedException e )
+            {
+                // ignore this one, continue fetching stuff
+            }
+            catch ( ExecutionException wrapper )
+            {
+                Throwable e = wrapper.getCause();
+                if ( e instanceof ItemNotFoundException || e instanceof IllegalOperationException
+                    || e instanceof StorageException )
+                {
+                    // ignored
+                }
+                else if ( e instanceof RuntimeException )
+                {
+                    throw (RuntimeException) e;
+                }
+                else
+                {
+                    throw new RuntimeException( e.getMessage(), e );
                 }
             }
         }
@@ -404,10 +455,11 @@ public abstract class AbstractGroupRepository
         }
     }
 
-    public List<StorageItem> doRetrieveItems( ResourceStoreRequest request )
+    public List<StorageItem> doRetrieveItems( final ResourceStoreRequest request )
         throws StorageException
     {
         ArrayList<StorageItem> items = new ArrayList<StorageItem>();
+        ArrayList<Future<StorageItem>> futures = new ArrayList<Future<StorageItem>>();
 
         RepositoryItemUid uid = createUid( request.getRequestPath() );
 
@@ -416,34 +468,23 @@ public abstract class AbstractGroupRepository
 
         if ( !isRequestGroupLocalOnly )
         {
-            for ( Repository repository : getRequestRepositories( request ) )
+            for ( final Repository repository : getRequestRepositories( request ) )
             {
                 if ( !request.getProcessedRepositories().contains( repository.getId() ) )
                 {
-                    try
+                    // NEXUS-4353 run item retrievals in parallel
+                    Future<StorageItem> future = executor.submit( new Callable<StorageItem>()
                     {
-                        StorageItem item = repository.retrieveItem( false, request );
+                        @Override
+                        public StorageItem call()
+                            throws Exception
+                        {
+                            StorageItem item = repository.retrieveItem( false, request );
 
-                        items.add( item );
-                    }
-                    catch ( ItemNotFoundException e )
-                    {
-                        // that's okay
-                    }
-                    catch ( RepositoryNotAvailableException e )
-                    {
-                        getLogger().debug(
-                            RepositoryStringUtils.getFormattedMessage(
-                                "Member repository %s is not available, request failed.", e.getRepository() ) );
-                    }
-                    catch ( StorageException e )
-                    {
-                        throw e;
-                    }
-                    catch ( IllegalOperationException e )
-                    {
-                        getLogger().warn( "Member repository request failed", e );
-                    }
+                            return item;
+                        }
+                    } );
+                    futures.add( future );
                 }
                 else
                 {
@@ -462,6 +503,43 @@ public abstract class AbstractGroupRepository
             }
         }
 
+        // post-processing, retrieve all futures
+        for ( Future<StorageItem> future : futures )
+        {
+            try
+            {
+                StorageItem item = future.get();
+                items.add( item );
+            }
+            catch ( InterruptedException e )
+            {
+                // ignore this one, continue fetching stuff
+            }
+            catch ( ExecutionException wrapper )
+            {
+                // unwrap real exception
+                Throwable e = wrapper.getCause();
+                if ( e instanceof ItemNotFoundException )
+                {
+                    // that's okay
+                }
+                else if ( e instanceof RepositoryNotAvailableException )
+                {
+                    getLogger().debug(
+                        RepositoryStringUtils.getFormattedMessage(
+                            "Member repository %s is not available, request failed.",
+                            ( (ItemNotFoundException) e ).getRepository() ) );
+                }
+                else if ( e instanceof StorageException )
+                {
+                    throw (StorageException) e;
+                }
+                else if ( e instanceof IllegalOperationException )
+                {
+                    getLogger().warn( "Member repository request failed", e );
+                }
+            }
+        }
         return items;
     }
 
