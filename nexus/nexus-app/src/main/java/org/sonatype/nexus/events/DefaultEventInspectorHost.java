@@ -22,9 +22,10 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 import org.codehaus.plexus.component.annotations.Component;
 import org.codehaus.plexus.component.annotations.Requirement;
@@ -72,7 +73,9 @@ public class DefaultEventInspectorHost
         throws StartingException
     {
         // set up executor
-        executor = Executors.newCachedThreadPool( new NexusThreadFactory( "nxevthost", "Event Inspector Host" ) );
+        NexusThreadFactory threadFactory = new NexusThreadFactory( "nxevthost", "Event Inspector Host" );
+        executor =
+            new ThreadPoolExecutor( 5, 100, 60, TimeUnit.SECONDS, new SynchronousQueue<Runnable>( true ), threadFactory );
     }
 
     public void stop()
