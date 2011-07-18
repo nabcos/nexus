@@ -6,7 +6,7 @@
  * Public License Version 3 as published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
+ * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License ersion 3
  * for more details.
  *
  * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
@@ -18,9 +18,12 @@
  */
 package org.sonatype.nexus.integrationtests.nexus3670;
 
-import static org.sonatype.nexus.integrationtests.ITGroups.INDEX;
+import static org.sonatype.nexus.integrationtests.ITGroups.*;
 
+import java.lang.management.ManagementFactory;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 import java.util.Set;
 
 import org.apache.maven.index.treeview.TreeNode;
@@ -28,6 +31,7 @@ import org.apache.maven.index.treeview.TreeNode.Type;
 import org.sonatype.nexus.integrationtests.AbstractNexusIntegrationTest;
 import org.sonatype.nexus.rest.indextreeview.IndexBrowserTreeNode;
 import org.sonatype.nexus.rest.indextreeview.IndexBrowserTreeViewResponseDTO;
+import org.sonatype.nexus.rest.model.ScheduledServiceListResource;
 import org.sonatype.nexus.rest.model.SearchNGResponse;
 import org.sonatype.nexus.test.utils.EventInspectorsUtil;
 import org.sonatype.nexus.test.utils.TaskScheduleUtil;
@@ -37,14 +41,28 @@ import org.testng.annotations.Test;
 /**
  * Test Index tree view.
  */
+@Test
 public class Nexus3670IndexTreeViewIT
     extends AbstractNexusIntegrationTest
 {
+
     @Override
     protected void runOnce()
         throws Exception
     {
         super.runOnce();
+
+
+        log.error( "TASKS" );
+
+        List<ScheduledServiceListResource> tasks = TaskScheduleUtil.getAllTasks();
+
+        for ( ScheduledServiceListResource task : tasks )
+        {
+            String msg =
+                String.format( "%s (%s - %s): %s", task.getName(), task.getId(), task.getTypeName(), task.getStatus() );
+            log.error( msg );
+        }
 
         // just making sure all tasks are finished
         TaskScheduleUtil.waitForAllTasksToStop();
@@ -55,13 +73,14 @@ public class Nexus3670IndexTreeViewIT
 
         // groupId
         SearchNGResponse results = getSearchMessageUtil().searchNGFor( "nexus3670" );
-        Assert.assertEquals( 7, results.getData().size() );
+        Assert.assertEquals( 7, results.getData().size(),
+            Arrays.toString( ManagementFactory.getThreadMXBean().dumpAllThreads( true, true ) ) );
         // repoId
         Assert.assertEquals( results.getData().get( 0 ).getArtifactHits().get( 0 ).getRepositoryId(),
-                             REPO_TEST_HARNESS_REPO, "Where got it deployed?" );
+            REPO_TEST_HARNESS_REPO, "Where got it deployed?" );
     }
 
-    @Test(groups = INDEX)
+    @Test( groups = INDEX )
     public void testTreeWithoutHint()
         throws Exception
     {
@@ -73,6 +92,8 @@ public class Nexus3670IndexTreeViewIT
         // this is the G node of the "nexus3670" groupId (note: on G nodes, only the path is filled, but not the GAV!)
         IndexBrowserTreeNode node = (IndexBrowserTreeNode) response.getData().getChildren().get( 0 );
 
+        printTree( node, 0, null );
+
         // check path (note leading and trailing slashes!)
         Assert.assertEquals( node.getPath(), "/nexus3670/", "The path does not correspond to group!" );
 
@@ -80,14 +101,33 @@ public class Nexus3670IndexTreeViewIT
         // but this path is also Group ID, hence response will contain whole tree!
         response = getSearchMessageUtil().indexBrowserTreeView( REPO_TEST_HARNESS_REPO, node.getPath() );
 
+        node = (IndexBrowserTreeNode) response.getData();
+        printTree( node, 0, null );
+
         Assert.assertEquals( response.getData().getChildren().size(), 4,
-                             "There are four \"nexus3670\" artifacts in a group!" );
+            "There are four \"nexus3670\" artifacts in a group!" );
 
         // this is group node
-        node = (IndexBrowserTreeNode) response.getData().getChildren().get( 0 );
+        // FIXME the order on the result is not guaranteed, as was assumed before. Did this change in indexer (plugin)?
+        // Was this always faulty? Does order depends on thread
+        // execution order in the indexing event manager stuff? (was changed to async late 2010)
+        // node = null;
+        // for ( Iterator<TreeNode> iterator = response.getData().getChildren().iterator(); iterator.hasNext(); )
+        // {
+        // IndexBrowserTreeNode realNode = (IndexBrowserTreeNode) iterator.next();
+        // if ( "known-artifact-a".equals( realNode.getArtifactId() ) )
+        // {
+        // node = realNode;
+        // break;
+        // }
+        // }
+        // assertThat( "Could not find 'known-artifact-a' artifactId in returned nodes", node, notNullValue() );
 
+        node = response.getData().getChildren().get( 0 );
+        printTree( node, 0, null );
+        
         Assert.assertEquals( node.getChildren().size(), 3,
-                             "There is three versions of \"nexus3670:known-artifact-a\" artifact!" );
+            "There is three versions of \"nexus3670:known-artifact-a\" artifact!" );
 
         // get one child (V)
         node = (IndexBrowserTreeNode) node.getChildren().get( 0 );
@@ -96,7 +136,39 @@ public class Nexus3670IndexTreeViewIT
         Assert.assertEquals( node.getType(), TreeNode.Type.V, "The path should be V node" );
     }
 
-    @Test(groups = INDEX)
+    private void printTree( IndexBrowserTreeNode node, int indent, StringBuilder msg )
+    {
+        String INDENT = "                        ";
+        if ( msg == null )
+        {
+            msg = new StringBuilder( "IndexBrowserTree:\n" );
+        }
+        if ( node == null )
+        {
+            msg.append( "NULL" );
+        }
+        else
+        {
+            msg.append( INDENT.substring( 0, indent )
+                + String.format( "%s:%s:%s:%s\n", node.getPath(), node.getGroupId(), node.getArtifactId(),
+                    node.getVersion() ) );
+            if ( node.getChildren() != null )
+            {
+                for ( TreeNode child : node.getChildren() )
+                {
+                    printTree( (IndexBrowserTreeNode) child, indent + 1, msg );
+                }
+            }
+        }
+
+        if ( indent == 0 )
+        {
+            log.error( msg.toString() );
+        }
+
+    }
+
+    @Test( groups = INDEX )
     public void testTreeWithHint()
         throws Exception
     {
@@ -112,6 +184,7 @@ public class Nexus3670IndexTreeViewIT
 
     protected int countNodes( IndexBrowserTreeNode node, Set<Type> types )
     {
+        printTree( node, 0, null );
         int result = types.contains( node.getType() ) ? 1 : 0;
 
         if ( !node.isLeaf() )
