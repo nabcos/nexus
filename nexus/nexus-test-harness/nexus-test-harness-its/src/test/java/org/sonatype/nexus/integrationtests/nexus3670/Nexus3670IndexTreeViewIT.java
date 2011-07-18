@@ -123,7 +123,7 @@ public class Nexus3670IndexTreeViewIT
         // }
         // assertThat( "Could not find 'known-artifact-a' artifactId in returned nodes", node, notNullValue() );
 
-        node = response.getData().getChildren().get( 0 );
+        node = (IndexBrowserTreeNode) response.getData().getChildren().get( 0 );
         printTree( node, 0, null );
         
         Assert.assertEquals( node.getChildren().size(), 3,
