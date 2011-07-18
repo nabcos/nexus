@@ -104,7 +104,7 @@ public class DefaultEventInspectorHost
             // handler.run();
 
             // ==
-            if ( ei instanceof AsynchronousEventInspector && executor != null && !executor.isShutdown() )
+            if ( false && ei instanceof AsynchronousEventInspector && executor != null && !executor.isShutdown() )
             {
                 try
                 {
