@@ -143,6 +143,9 @@ public class NexusStatusUtil {
             }
         }
 
+        String tDump = Arrays.toString( ManagementFactory.getThreadMXBean().dumpAllThreads( true, true ) );
+        log.error( "Unable to doHardStart(), nexus still stopped, took 200s\n" + tDump );
+
         try {
             appBooter.shutdown();
         } catch (Throwable t) {
@@ -150,8 +153,7 @@ public class NexusStatusUtil {
         } finally {
             appBooter.clean();
         }
-        String tDump = Arrays.toString( ManagementFactory.getThreadMXBean().dumpAllThreads( true, true ) );
-        log.error( "Unable to doHardStart(), nexus still stopped, took 200s\n" + tDump );
+
         throw new NexusIllegalStateException( "Unable to doHardStart(), nexus still stopped, took 200s\n"
             + tDump );
 
