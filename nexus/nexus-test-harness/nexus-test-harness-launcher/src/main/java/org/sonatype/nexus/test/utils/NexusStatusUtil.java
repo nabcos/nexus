@@ -20,9 +20,11 @@ package org.sonatype.nexus.test.utils;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.management.ManagementFactory;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.util.Arrays;
 
 import org.apache.commons.httpclient.HttpException;
 import org.apache.commons.httpclient.methods.GetMethod;
@@ -148,7 +150,10 @@ public class NexusStatusUtil {
         } finally {
             appBooter.clean();
         }
-        throw new NexusIllegalStateException("Unable to doHardStart(), nexus still stopped, took 200s");
+        String tDump = Arrays.toString( ManagementFactory.getThreadMXBean().dumpAllThreads( true, true ) );
+        log.error( "Unable to doHardStart(), nexus still stopped, took 200s\n" + tDump );
+        throw new NexusIllegalStateException( "Unable to doHardStart(), nexus still stopped, took 200s\n"
+            + tDump );
 
     }
 
