@@ -1680,21 +1680,6 @@
 
   <profiles>
     <profile>
-      <id>skipTests</id>
-      <build>
-        <pluginManagement>
-          <plugins>
-            <plugin>
-              <artifactId>maven-surefire-plugin</artifactId>
-              <configuration>
-                <skipTests>true</skipTests>
-              </configuration>
-            </plugin>
-          </plugins>
-        </pluginManagement>
-      </build>
-    </profile>
-    <profile>
       <id>skipBenchmarks</id>
       <build>
         <pluginManagement>
@@ -1709,30 +1694,6 @@
             </plugin>
           </plugins>
         </pluginManagement>
-      </build>
-    </profile>
-
-    <profile>
-      <id>quick</id>
-      <properties>
-        <test>void</test>
-        <it.test>void</it.test>
-        <failIfNoTests>false</failIfNoTests>
-        <invoker.skip>true</invoker.skip>
-        <source.skip>true</source.skip>
-        <enunciate.skip>true</enunciate.skip>
-        <tattletale.skip>true</tattletale.skip>
-      </properties>
-      <build>
-        <plugins>
-          <plugin>
-            <groupId>org.sonatype.plugins</groupId>
-            <artifactId>nexus-test-environment-maven-plugin</artifactId>
-            <configuration>
-              <testSkip>true</testSkip>
-            </configuration>
-          </plugin>
-        </plugins>
       </build>
     </profile>
 
@@ -1820,6 +1781,7 @@
          effects of -Pquick: tests will be compiled but not run, n-t-e-p will assemble the test environments
          effects of -Dquick: tests will not be compiled, n-t-e-p and other test-related plugins will be skipped entirely
     -->
+
     <profile>
       <id>quick</id>
       <activation>
@@ -1837,6 +1799,17 @@
         <tattletale.skip>true</tattletale.skip>
         <test-env.skip>true</test-env.skip>
       </properties>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.sonatype.plugins</groupId>
+            <artifactId>nexus-test-environment-maven-plugin</artifactId>
+            <configuration>
+              <testSkip>true</testSkip>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
     </profile>
     <profile>
       <id>skipTests</id>
@@ -1849,18 +1822,26 @@
         <maven.test.skip>true</maven.test.skip>
       </properties>
       <build>
-        <plugins>
-          <plugin>
-            <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-jar-plugin</artifactId>
-            <executions>
-              <execution>
-                <id>attach-test-jar</id>
-                <phase>none</phase>
-              </execution>
-            </executions>
-          </plugin>
-        </plugins>
+        <pluginManagement>
+          <plugins>
+            <plugin>
+              <artifactId>maven-surefire-plugin</artifactId>
+              <configuration>
+                <skipTests>true</skipTests>
+              </configuration>
+            </plugin>
+            <plugin>
+              <groupId>org.apache.maven.plugins</groupId>
+              <artifactId>maven-jar-plugin</artifactId>
+              <executions>
+                <execution>
+                  <id>attach-test-jar</id>
+                  <phase>none</phase>
+                </execution>
+              </executions>
+            </plugin>
+          </plugins>
+        </pluginManagement>
       </build>
     </profile>
     <profile>
@@ -1951,7 +1932,7 @@
       </build>
     </profile>
 
-     <profile>
+    <profile>
       <id>coverage</id>
       <build>
         <plugins>
