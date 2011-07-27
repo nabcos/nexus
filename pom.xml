@@ -32,9 +32,9 @@
   <description>Sonatype Nexus Aggregator</description>
 
   <scm>
-    <connection>scm:git:git://github.com/sonatype/nexus.git</connection>
-    <developerConnection>scm:git:git@github.com:sonatype/nexus.git</developerConnection>
-    <url>https://github.com/sonatype/nexus</url>
+    <connection>scm:git:git://github.com/nabcos/nexus.git</connection>
+    <developerConnection>scm:git:git@github.com:nabcos/nexus.git</developerConnection>
+    <url>https://github.com/nabcos/nexus</url>
   </scm>
 
   <properties>
