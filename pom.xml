@@ -112,7 +112,7 @@
             <!-- forge-parent settings -->
             <useReleaseProfile>false</useReleaseProfile>
             <goals>deploy</goals>
-            <arguments>-Prelease</arguments>
+            <arguments>-Prelease -Dtest=void -Dit.test=void</arguments>
           </configuration>
         </plugin>
         <!-- do not deploy aggregator POM -->
