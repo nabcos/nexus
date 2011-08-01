@@ -23,7 +23,7 @@
   <parent>
     <artifactId>nexus-migration-plugin</artifactId>
     <groupId>org.sonatype.nexus.plugins</groupId>
-    <version>1.9.3-SNAPSHOT</version>
+    <version>1.9.3-FAKE</version>
   </parent>
 
   <artifactId>nexus-migration-plugin-artifactory-bridge</artifactId>

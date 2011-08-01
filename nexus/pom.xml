@@ -33,7 +33,7 @@
   <artifactId>nexus</artifactId>
   <packaging>pom</packaging>
   <name>Nexus</name>
-  <version>1.9.3-SNAPSHOT</version>
+  <version>1.9.3-FAKE</version>
   <description>Sonatype Nexus Repository Manager</description>
   <inceptionYear>2007</inceptionYear>
 
@@ -1835,7 +1835,7 @@
                         </goals>
                       </pluginExecutionFilter>
                       <action>
-                        <execute/>
+                        <execute />
                       </action>
                     </pluginExecution>
                     <pluginExecution>
@@ -1848,7 +1848,7 @@
                         </goals>
                       </pluginExecutionFilter>
                       <action>
-                        <execute/>
+                        <execute />
                       </action>
                     </pluginExecution>
                     <pluginExecution>
@@ -1861,7 +1861,7 @@
                         </goals>
                       </pluginExecutionFilter>
                       <action>
-                        <ignore/>
+                        <ignore />
                       </action>
                     </pluginExecution>
                   </pluginExecutions>
