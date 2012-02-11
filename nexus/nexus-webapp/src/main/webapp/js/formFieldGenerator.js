@@ -1,20 +1,14 @@
 /*
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 FormFieldGenerator = function(panelId, fieldSetName, fieldNamePrefix, typeStore, repoStore, groupStore, repoOrGroupStore, customTypes, width) {
   var allTypes = [];
@@ -53,6 +47,7 @@ FormFieldGenerator = function(panelId, fieldSetName, fieldNamePrefix, typeStore,
             {
               items[j] = {
                 xtype : 'textfield',
+                htmlDecode : true,
                 fieldLabel : curRec.label,
                 itemCls : curRec.required ? 'required-field' : '',
                 helpText : curRec.helpText,
@@ -74,6 +69,22 @@ FormFieldGenerator = function(panelId, fieldSetName, fieldNamePrefix, typeStore,
                 allowBlank : curRec.required ? false : true,
                 disabled : true,
                 width : width,
+                regex : curRec.regexValidation ? new RegExp(curRec.regexValidation) : null
+              };
+            }
+            else if (curRec.type == 'text-area')
+            {
+              items[j] = {
+                xtype : 'textarea',
+                htmlDecode : true,
+                fieldLabel : curRec.label,
+                itemCls : curRec.required ? 'required-field' : '',
+                helpText : curRec.helpText,
+                name : fieldNamePrefix + curRec.id,
+                allowBlank : curRec.required ? false : true,
+                disabled : true,
+                anchor : '-20',
+                height : '138',
                 regex : curRec.regexValidation ? new RegExp(curRec.regexValidation) : null
               };
             }
@@ -236,6 +247,10 @@ FormFieldExporter = function(formPanel, panelIdSuffix, formFieldPrefix, customTy
           // force to a string, as that is what the current api requires
           value = '' + item.getValue();
         }
+        else if (item.xtype == 'textarea')
+        {
+          value = item.getValue();
+        }
         else if (item.xtype == 'checkbox')
         {
           value = '' + item.getValue();
@@ -282,6 +297,10 @@ FormFieldImporter = function(jsonObject, formPanel, formFieldPrefix, customTypes
           else if (formField.xtype == 'numberfield')
           {
             formField.setValue(Number(jsonObject.properties[i].value));
+          }
+          else if (formField.xtype == 'textarea')
+          {
+            formField.setValue(jsonObject.properties[i].value);
           }
           else if (formField.xtype == 'checkbox')
           {

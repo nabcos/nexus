@@ -1,20 +1,14 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.restlight.stage;
 
@@ -32,6 +26,7 @@ import org.jdom.JDOMException;
 import org.jdom.Text;
 import org.jdom.xpath.XPath;
 import org.sonatype.nexus.restlight.common.AbstractRESTLightClient;
+import org.sonatype.nexus.restlight.common.ProxyConfig;
 import org.sonatype.nexus.restlight.common.RESTLightClientException;
 
 /**
@@ -42,6 +37,8 @@ public class StageClient
 {
 
     public static final String PROFILES_PATH = SVC_BASE + "/staging/profiles";
+
+    public static final String PROFILES_EVALUATE_PATH = SVC_BASE + "/staging/profile_evaluate";
 
     public static final String PROFILE_REPOS_PATH_PREFIX = SVC_BASE + "/staging/profile_repositories/";
 
@@ -71,6 +68,10 @@ public class StageClient
 
     private static final String REPO_USER_AGENT_ELEMENT = "userAgent";
 
+    private static final String REPO_CREATED_DATE_ELEMENT = "createdDate";
+
+    private static final String REPO_CLOSED_DATE_ELEMENT = "closedDate";
+
     private static final String USER_ID_ELEMENT = "userId";
 
     private static final String OPEN_STAGE_REPOS_XPATH = "stagingRepositoryIds/string/text()";
@@ -81,20 +82,29 @@ public class StageClient
 
     private static final String STAGE_REPO_XPATH = "//stagingProfile";
 
+    private static final String DATA_XPATH = "//data";
+
     private static final String STAGE_REPO_DETAIL_XPATH = "//stagingProfileRepository";
 
     private static final String BUILD_PROMOTION_PROFILES_XPATH = "//stagingProfile[mode=\"GROUP\"]";
 
+    private static final String STAGE_VOCAB_BASE_PATH = "stage/";
+    
     public StageClient( final String baseUrl, final String user, final String password )
         throws RESTLightClientException
     {
-        super( baseUrl, user, password, "stage/" );
+        super( baseUrl, user, password, STAGE_VOCAB_BASE_PATH  );
     }
+
+    public StageClient(final String baseUrl, final String user, final String password, final ProxyConfig proxyConfig) throws RESTLightClientException {
+        super(baseUrl, user, password, STAGE_VOCAB_BASE_PATH , proxyConfig);
+    }
+    
 
     /**
      * Retrieve the list of all open staging repositories (not finished) in all available profiles that are opened for
      * the current user (the one specified in this client's constructor).
-     * 
+     *
      * @return details about each open repository
      */
     public List<StageRepository> getOpenStageRepositoriesForUser()
@@ -108,7 +118,7 @@ public class StageClient
     /**
      * Retrieve the list of all closed (finished) staging repositories that may house artifacts with the specified
      * groupId, artifactId, and version for the current user.
-     * 
+     *
      * @return details about each closed repository
      */
     public List<StageRepository> getOpenStageRepositoriesForUser( final String groupId, final String artifactId,
@@ -118,9 +128,9 @@ public class StageClient
         Map<String, String> params = new HashMap<String, String>();
         mapCoord( groupId, artifactId, version, params );
 
-        Document doc = get( PROFILES_PATH, params );
+        Document doc = get( PROFILES_EVALUATE_PATH, params );
 
-        return parseStageRepositories( doc, STAGE_REPO_XPATH, true, true );
+        return parseStageRepositories( doc, STAGE_REPO_LIST_XPATH, true, true );
     }
 
     /**
@@ -136,7 +146,7 @@ public class StageClient
         Map<String, String> params = new HashMap<String, String>();
         mapCoord( groupId, artifactId, version, params );
 
-        Document doc = get( PROFILES_PATH, params );
+        Document doc = get( PROFILES_EVALUATE_PATH, params );
 
         List<StageRepository> ids = parseStageRepositories( doc, STAGE_REPO_XPATH, true, true );
         if ( ids == null || ids.isEmpty() )
@@ -152,7 +162,7 @@ public class StageClient
     /**
      * Retrieve the list of all closed (finished) staging repositories in all available profiles that are opened for the
      * current user (the one specified in this client's constructor).
-     * 
+     *
      * @return details about each closed repository
      */
     public List<StageRepository> getClosedStageRepositoriesForUser()
@@ -166,7 +176,7 @@ public class StageClient
     /**
      * Retrieve the list of all closed (finished) staging repositories that may house artifacts with the specified
      * groupId, artifactId, and version for the current user.
-     * 
+     *
      * @return details about each closed repository
      */
     public List<StageRepository> getClosedStageRepositoriesForUser( final String groupId, final String artifactId,
@@ -176,7 +186,7 @@ public class StageClient
         Map<String, String> params = new HashMap<String, String>();
         mapCoord( groupId, artifactId, version, params );
 
-        Document doc = get( PROFILES_PATH, params );
+        Document doc = get( PROFILES_EVALUATE_PATH, params );
 
         return parseStageRepositories( doc, STAGE_REPO_XPATH, false, true );
     }
@@ -216,9 +226,8 @@ public class StageClient
             return null;
         }
 
-        String descElementName =
-            getVocabulary().getProperty( VocabularyKeys.PROMOTE_STAGE_REPO_DESCRIPTION_ELEMENT,
-                VocabularyKeys.SUPPRESS_ELEMENT_VALUE );
+        String descElementName = getVocabulary().getProperty( VocabularyKeys.PROMOTE_STAGE_REPO_DESCRIPTION_ELEMENT,
+                                                              VocabularyKeys.SUPPRESS_ELEMENT_VALUE );
 
         if ( !VocabularyKeys.SUPPRESS_ELEMENT_VALUE.equals( descElementName ) )
         {
@@ -246,7 +255,7 @@ public class StageClient
      * Assuming the user has already queried Nexus for a valid {@link StageRepository} instance (details for a staging
      * repository), submit those details to Nexus to promote the repository into the permanent repository with the
      * specified targetRepositoryId.
-     * 
+     *
      * @param description
      */
     public void promoteRepository( final StageRepository repo, final String targetRepositoryId, String description )
@@ -260,9 +269,9 @@ public class StageClient
 
     /**
      * Promotes a set of repositories to a group profile.
-     * 
+     *
      * @param groupProfileId The group profile to promote to.
-     * @param repositoryIds A list of repositoryIds to be promoted.
+     * @param repositoryIds  A list of repositoryIds to be promoted.
      * @throws RESTLightClientException
      */
     public void promoteRepositories( String stagingProfileGroup, String description, List<String> stagedRepositoryIds )
@@ -306,7 +315,7 @@ public class StageClient
 
     /**
      * Returns a list of all the build promotion profile Ids.
-     * 
+     *
      * @return
      * @throws RESTLightClientException
      */
@@ -326,8 +335,9 @@ public class StageClient
         }
         catch ( JDOMException e )
         {
-            throw new RESTLightClientException( "XPath selection failed: '" + BUILD_PROMOTION_PROFILES_XPATH
-                + "' (Root node: " + doc.getRootElement().getName() + ").", e );
+            throw new RESTLightClientException(
+                "XPath selection failed: '" + BUILD_PROMOTION_PROFILES_XPATH + "' (Root node: "
+                    + doc.getRootElement().getName() + ").", e );
         }
 
         List<StageProfile> result = new ArrayList<StageProfile>();
@@ -361,8 +371,9 @@ public class StageClient
         }
         catch ( JDOMException e )
         {
-            throw new RESTLightClientException( "XPath selection failed: '" + profileXpath + "' (Root node: "
-                + doc.getRootElement().getName() + ").", e );
+            throw new RESTLightClientException(
+                "XPath selection failed: '" + profileXpath + "' (Root node: " + doc.getRootElement().getName() + ").",
+                e );
         }
 
         List<StageRepository> result = new ArrayList<StageRepository>();
@@ -390,15 +401,17 @@ public class StageClient
                         {
                             for ( Text txt : repoIds )
                             {
-                                matchingRepoStubs.put( profileId + "/" + txt.getText(), new StageRepository( profileId,
-                                    txt.getText(), findOpen ).setProfileName( profileName ) );
+                                matchingRepoStubs.put( profileId + "/" + txt.getText(),
+                                                       new StageRepository( profileId, txt.getText(),
+                                                                            findOpen ).setProfileName( profileName ) );
                             }
                         }
                     }
                     catch ( JDOMException e )
                     {
-                        throw new RESTLightClientException( "XPath selection failed: '" + OPEN_STAGE_REPOS_XPATH
-                            + "' (Node: " + profile.getName() + ").", e );
+                        throw new RESTLightClientException(
+                            "XPath selection failed: '" + OPEN_STAGE_REPOS_XPATH + "' (Node: " + profile.getName()
+                                + ").", e );
                     }
                 }
 
@@ -411,15 +424,17 @@ public class StageClient
                         {
                             for ( Text txt : repoIds )
                             {
-                                matchingRepoStubs.put( profileId + "/" + txt.getText(), new StageRepository( profileId,
-                                    txt.getText(), findOpen ).setProfileName( profileName ) );
+                                matchingRepoStubs.put( profileId + "/" + txt.getText(),
+                                                       new StageRepository( profileId, txt.getText(),
+                                                                            findOpen ).setProfileName( profileName ) );
                             }
                         }
                     }
                     catch ( JDOMException e )
                     {
-                        throw new RESTLightClientException( "XPath selection failed: '" + CLOSED_STAGE_REPOS_XPATH
-                            + "' (Node: " + profile.getName() + ").", e );
+                        throw new RESTLightClientException(
+                            "XPath selection failed: '" + CLOSED_STAGE_REPOS_XPATH + "' (Node: " + profile.getName()
+                                + ").", e );
                     }
                 }
 
@@ -455,7 +470,8 @@ public class StageClient
         }
         catch ( JDOMException e )
         {
-            throw new RESTLightClientException( "Failed to select detail sections for staging-profile repositories.", e );
+            throw new RESTLightClientException( "Failed to select detail sections for staging-profile repositories.",
+                                                e );
         }
 
         if ( repoDetails != null && !repoDetails.isEmpty() )
@@ -507,6 +523,18 @@ public class StageClient
                 if ( userAgent != null )
                 {
                     repo.setUserAgent( userAgent.getText() );
+                }
+
+                final Element createdDate = detail.getChild( REPO_CREATED_DATE_ELEMENT );
+                if ( createdDate != null )
+                {
+                    repo.setCreatedDate( createdDate.getText() );
+                }
+
+                final Element closedDate = detail.getChild( REPO_CLOSED_DATE_ELEMENT );
+                if ( closedDate != null )
+                {
+                    repo.setClosedDate( closedDate.getText() );
                 }
             }
         }
@@ -575,7 +603,7 @@ public class StageClient
 
     /**
      * Returns a list of all the staging profile Ids.
-     * 
+     *
      * @return
      * @throws RESTLightClientException
      */
@@ -595,8 +623,9 @@ public class StageClient
         }
         catch ( JDOMException e )
         {
-            throw new RESTLightClientException( "XPath selection failed: '" + STAGE_REPO_XPATH + "' (Root node: "
-                + doc.getRootElement().getName() + ").", e );
+            throw new RESTLightClientException(
+                "XPath selection failed: '" + STAGE_REPO_XPATH + "' (Root node: " + doc.getRootElement().getName()
+                    + ").", e );
         }
 
         List<StageProfile> result = new ArrayList<StageProfile>();

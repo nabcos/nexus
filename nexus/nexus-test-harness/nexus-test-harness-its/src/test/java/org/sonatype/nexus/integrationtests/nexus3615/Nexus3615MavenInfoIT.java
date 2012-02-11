@@ -1,29 +1,25 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.integrationtests.nexus3615;
 
+import static org.sonatype.nexus.test.utils.NexusRequestMatchers.*;
+
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 
 import org.apache.maven.index.artifact.Gav;
-import org.restlet.data.Response;
 import org.sonatype.nexus.integrationtests.AbstractNexusIntegrationTest;
 import org.sonatype.nexus.integrationtests.RequestFacade;
 import org.sonatype.nexus.rest.model.Maven2ArtifactInfoResource;
@@ -59,20 +55,18 @@ public class Nexus3615MavenInfoIT
         downloadAndVerify( simpleJarGav, getTestRepositoryId() );
 
         Gav withClassifierGav =
-            new Gav( "nexus3615", "simpleJar", "1.0.1", "classifier", "jar", null, null, null, false, null,
-                false, null );
+            new Gav( "nexus3615", "simpleJar", "1.0.1", "classifier", "jar", null, null, null, false, null, false, null );
         deployGav( withClassifierGav, getTestRepositoryId() );
         downloadAndVerify( withClassifierGav, getTestRepositoryId() );
 
         Gav withExtentionGav =
-            new Gav( "nexus3615", "simpleJar", "1.0.1", null, "extention", null, null, null, false, null, false,
-                null );
+            new Gav( "nexus3615", "simpleJar", "1.0.1", null, "extention", null, null, null, false, null, false, null );
         deployGav( withExtentionGav, getTestRepositoryId() );
         downloadAndVerify( withExtentionGav, getTestRepositoryId() );
 
         Gav withClassifierAndExtentionGav =
-            new Gav( "nexus3615", "simpleJar", "1.0.1", "classifier", "extention", null, null, null, false,
-                null, false, null );
+            new Gav( "nexus3615", "simpleJar", "1.0.1", "classifier", "extention", null, null, null, false, null,
+                false, null );
         deployGav( withClassifierAndExtentionGav, getTestRepositoryId() );
         downloadAndVerify( withClassifierAndExtentionGav, getTestRepositoryId() );
     }
@@ -117,23 +111,20 @@ public class Nexus3615MavenInfoIT
         throws Exception
     {
         // deploy a non maven path
-        new DeployUtils( this ).deployWithWagon( "http", getRepositoryUrl( getTestRepositoryId() ),
+        getDeployUtils().deployWithWagon( "http", getRepositoryUrl( getTestRepositoryId() ),
             getTestFile( "pom.xml" ), "foo/bar" );
 
         // now get the info for it
-        Response response =
-            RequestFacade.doGetRequest( "service/local/repositories/" + getTestRepositoryId() + "/content/"
-                + "foo/bar" + "?describe=maven2" );
-        String responseText = response.getEntity().getText();
-        Assert.assertEquals( response.getStatus().getCode(), 404, "Response was: " + responseText );
-
+        String serviceURIpart =
+            "service/local/repositories/" + getTestRepositoryId() + "/content/" + "foo/bar" + "?describe=maven2";
+        RequestFacade.doGet( serviceURIpart, respondsWithStatusCode( 404 ) );
     }
 
     public void deployGav( Gav gav, String repoId )
         throws Exception
     {
-        new DeployUtils( this ).deployWithWagon( "http", getRepositoryUrl( repoId ),
-            getTestFile( "simpleJar.jar" ), getRelitiveArtifactPath( gav ) );
+        getDeployUtils().deployWithWagon( "http", getRepositoryUrl( repoId ), getTestFile( "simpleJar.jar" ),
+            getRelitiveArtifactPath( gav ) );
     }
 
     @Test
@@ -142,14 +133,14 @@ public class Nexus3615MavenInfoIT
     {
         Gav releaseNotFoundGav =
             new Gav( "nexus3615", "notFound", "1.0.1", null, "jar", null, null, null, false, null, false, null );
-        Response response = downloadView( releaseNotFoundGav, "maven2", getTestRepositoryId() );
-        Assert.assertEquals( response.getStatus().getCode(), 404, "Status found: " + response.getStatus() );
+        RequestFacade.doGetForStatus( getServiceUriPart( releaseNotFoundGav, "maven2", getTestRepositoryId() ),
+            hasStatusCode( 404 ) );
 
         Gav snapshotNotFoundGav =
-            new Gav( "nexus3615", "notFound", "1.0.1-SNAPSHOT", null, "jar", 1, System.currentTimeMillis(), null, 
+            new Gav( "nexus3615", "notFound", "1.0.1-SNAPSHOT", null, "jar", 1, System.currentTimeMillis(), null,
                 false, null, false, null );
-        response = downloadView( snapshotNotFoundGav, "maven2", getTestRepositoryId() );
-        Assert.assertEquals( response.getStatus().getCode(), 404, "Status found: " + response.getStatus() );
+        RequestFacade.doGetForStatus( getServiceUriPart( snapshotNotFoundGav, "maven2", getTestRepositoryId() ),
+            hasStatusCode( 404 ) );
     }
 
     private void downloadAndVerify( Gav gav, String repoId )
@@ -187,16 +178,9 @@ public class Nexus3615MavenInfoIT
     {
         XStream xstream = getXMLXStream();
 
-        Response response = downloadView( gav, "maven2", repoId );
+        String responseText = RequestFacade.doGetForText( getServiceUriPart( gav, "maven2", repoId ) );
 
-        String responseText = response.getEntity().getText();
-
-        Assert.assertEquals( 200, response.getStatus().getCode() );
-
-        Maven2ArtifactInfoResource data =
-            ( (Maven2ArtifactInfoResourceRespose) xstream.fromXML( responseText ) ).getData();
-
-        return data;
+        return ( (Maven2ArtifactInfoResourceRespose) xstream.fromXML( responseText ) ).getData();
     }
 
     private String buildExpectedDepBlock( Gav gav )
@@ -223,13 +207,10 @@ public class Nexus3615MavenInfoIT
         return buffer.toString();
     }
 
-    private Response downloadView( Gav gav, String describeKey, String repoId )
-        throws IOException
+    private String getServiceUriPart( Gav gav, String describeKey, String repoId )
+        throws FileNotFoundException
     {
-        Response response =
-            RequestFacade.doGetRequest( "service/local/repositories/" + repoId + "/content/"
-                + getRelitiveArtifactPath( gav ) + "?describe=" + describeKey );
-
-        return response;
+        return "service/local/repositories/" + repoId + "/content/" + getRelitiveArtifactPath( gav ) + "?describe="
+            + describeKey;
     }
 }

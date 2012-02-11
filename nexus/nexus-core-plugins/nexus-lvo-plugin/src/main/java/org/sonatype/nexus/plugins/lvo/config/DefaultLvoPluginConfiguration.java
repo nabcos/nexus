@@ -1,20 +1,14 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.plugins.lvo.config;
 
@@ -23,7 +17,6 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.Reader;
@@ -32,10 +25,11 @@ import java.util.List;
 import java.util.concurrent.locks.ReentrantLock;
 
 import org.codehaus.plexus.component.annotations.Component;
-import org.codehaus.plexus.logging.AbstractLogEnabled;
+import org.codehaus.plexus.util.FileUtils;
 import org.codehaus.plexus.util.StringUtils;
 import org.codehaus.plexus.util.xml.pull.XmlPullParserException;
 import org.sonatype.configuration.ConfigurationException;
+import org.sonatype.nexus.logging.AbstractLoggingComponent;
 import org.sonatype.nexus.plugins.lvo.NoSuchKeyException;
 import org.sonatype.nexus.plugins.lvo.config.model.CLvoKey;
 import org.sonatype.nexus.plugins.lvo.config.model.Configuration;
@@ -44,7 +38,7 @@ import org.sonatype.nexus.plugins.lvo.config.model.io.xpp3.NexusLvoPluginConfigu
 
 @Component( role = LvoPluginConfiguration.class )
 public class DefaultLvoPluginConfiguration
-    extends AbstractLogEnabled
+    extends AbstractLoggingComponent
     implements LvoPluginConfiguration
 {
     @org.codehaus.plexus.component.annotations.Configuration( value = "${nexus-work}/conf/lvo-plugin.xml" )
@@ -105,6 +99,7 @@ public class DefaultLvoPluginConfiguration
             IOException
     {
         getConfiguration().setEnabled( true );
+        save();
     }
 
     public void disable()
@@ -112,6 +107,7 @@ public class DefaultLvoPluginConfiguration
             IOException
     {
         getConfiguration().setEnabled( false );
+        save();
     }
 
     protected Configuration getConfiguration()
@@ -144,8 +140,8 @@ public class DefaultLvoPluginConfiguration
             // This is ok, may not exist first time around
             if ( !configurationFile.exists() )
             {
-                copyFromStreamToFile(
-                    getClass().getResourceAsStream( "/META-INF/nexus-lvo-plugin/lvo-plugin.xml" ),
+                FileUtils.copyURLToFile(
+                    getClass().getResource( "/META-INF/nexus-lvo-plugin/lvo-plugin.xml" ),
                     configurationFile );
 
                 return getConfiguration();
@@ -235,33 +231,6 @@ public class DefaultLvoPluginConfiguration
     protected void clearCache()
     {
         configuration = null;
-    }
-
-    /**
-     * Method copied from nexus-utils 1.3.0-SNAPSHOT. Remove this and use it when there.
-     * 
-     * @param is
-     * @param output
-     * @throws IOException
-     * @deprecated Method copied from nexus-utils 1.3.0-SNAPSHOT. Remove this and use it when there.
-     */
-    public static void copyFromStreamToFile( InputStream is, File output )
-        throws IOException
-    {
-        FileOutputStream fos = null;
-
-        try
-        {
-            fos = new FileOutputStream( output );
-
-            org.codehaus.plexus.util.IOUtil.copy( is, fos );
-        }
-        finally
-        {
-            org.codehaus.plexus.util.IOUtil.close( is );
-
-            org.codehaus.plexus.util.IOUtil.close( fos );
-        }
     }
 
 }

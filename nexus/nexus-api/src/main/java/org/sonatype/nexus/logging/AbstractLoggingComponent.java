@@ -1,49 +1,59 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.logging;
 
-import javax.inject.Inject;
+import static com.google.common.base.Preconditions.checkNotNull;
 
-import org.codehaus.plexus.component.annotations.Requirement;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Coming from Plexus, do not use this! Use {@code @Inject org.slf4j.Logger} instead!
- * 
+ * Similar to Plexus' AbstractLogEnabled, but using Slf4j and straight-forward stuff! Consider using
+ * {@code LoggerFactory.getLogger(getClass() )} directly instead, since unsure about the "value" of this class.
+ *
  * @author cstamas
- * @deprecated Just use @Inject org.slf4j.Logger instead!
  */
 public abstract class AbstractLoggingComponent
 {
-    @Inject
-    @Requirement
-    private Logger logger;
 
+    private final Logger logger;
+
+    /**
+     * Default constructor that creates logger for component upon instantiation.
+     */
+    protected AbstractLoggingComponent()
+    {
+        this.logger = checkNotNull( createLogger() );
+    }
+
+    /**
+     * Creates logger instance to be used with component instance. It might be overridden by subclasses to implement
+     * alternative logger naming strategy. By default, this method does the "usual" fluff: {@code LoggerFactory.getLogger(getClass())}.
+     *
+     * @return The Logger instance to be used by component for logging.
+     */
+    protected Logger createLogger()
+    {
+        return LoggerFactory.getLogger( getClass() );
+    }
+
+    /**
+     * Returns the Logger instance of this component. Never returns {@code null}.
+     *
+     * @return
+     */
     protected Logger getLogger()
     {
-        if ( logger == null )
-        {
-            // fallback to this, in case of UTs?
-            logger = LoggerFactory.getLogger( this.getClass() );
-        }
-        
         return logger;
     }
 }

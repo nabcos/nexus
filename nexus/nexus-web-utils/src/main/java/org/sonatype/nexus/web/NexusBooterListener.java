@@ -1,20 +1,14 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.web;
 
@@ -36,8 +30,6 @@ import org.sonatype.nexus.configuration.application.NexusConfiguration;
 public class NexusBooterListener
     implements ServletContextListener
 {
-    private static Nexus nexus;
-
     public void contextInitialized( ServletContextEvent sce )
     {
         try
@@ -45,7 +37,7 @@ public class NexusBooterListener
             PlexusContainer plexus =
                 (PlexusContainer) sce.getServletContext().getAttribute( PlexusConstants.PLEXUS_KEY );
 
-            nexus = plexus.lookup( Nexus.class );
+            final Nexus nexus = plexus.lookup( Nexus.class );
 
             sce.getServletContext().setAttribute( Nexus.class.getName(), nexus );
 
@@ -61,12 +53,5 @@ public class NexusBooterListener
 
     public void contextDestroyed( ServletContextEvent sce )
     {
-    }
-    
-    // ==
-    
-    public static Nexus getNexus()
-    {
-        return nexus;
     }
 }

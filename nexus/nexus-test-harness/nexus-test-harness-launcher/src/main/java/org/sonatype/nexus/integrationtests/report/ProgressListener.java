@@ -1,26 +1,21 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.integrationtests.report;
 
+import static com.google.common.base.Preconditions.checkNotNull;
+
 import java.io.PrintStream;
 
-import org.apache.commons.io.output.NullOutputStream;
 import org.testng.ITestContext;
 import org.testng.ITestResult;
 import org.testng.TestListenerAdapter;
@@ -28,29 +23,16 @@ import org.testng.TestListenerAdapter;
 public class ProgressListener
     extends TestListenerAdapter
 {
-
-    private PrintStream out;
-
-    private PrintStream err;
-
     @Override
     public void onStart( ITestContext testContext )
     {
         super.onStart( testContext );
-
-        out = System.out;
-        err = System.err;
-        System.setOut( new PrintStream( new NullOutputStream() ) );
-        System.setErr( new PrintStream( new NullOutputStream() ) );
     }
 
     @Override
     public void onFinish( ITestContext testContext )
     {
         super.onFinish( testContext );
-
-        System.setOut( out );
-        System.setErr( err );
     }
 
     @Override
@@ -58,7 +40,7 @@ public class ProgressListener
     {
         super.onTestFailedButWithinSuccessPercentage( tr );
 
-        showResult( tr, "partial success", err );
+        showResult( tr, "partial success", System.out );
     }
 
     @Override
@@ -66,7 +48,7 @@ public class ProgressListener
     {
         super.onTestFailure( tr );
 
-        showResult( tr, "failed", err );
+        showResult( tr, "FAILED", System.out );
     }
 
     @Override
@@ -74,7 +56,7 @@ public class ProgressListener
     {
         super.onTestSkipped( tr );
 
-        showResult( tr, "skipped", err );
+        showResult( tr, "skipped", System.out );
     }
 
     @Override
@@ -82,12 +64,17 @@ public class ProgressListener
     {
         super.onTestSuccess( tr );
 
-        showResult( tr, "success", out );
+        showResult( tr, "SUCCESS", System.out  );
     }
 
     private void showResult( ITestResult result, String status, PrintStream printer )
     {
-        printer.println( "Result: " + result.getTestClass().getName() + "." + result.getName() + "() ===> " + status );
+        checkNotNull( result );
+        checkNotNull( result.getTestClass() );
+        checkNotNull( printer );
+
+        printer.println( String.format( "Result: %s.%s() ===> %s", result.getTestClass().getName(),
+            result.getName(), status ) );
     }
 
 }

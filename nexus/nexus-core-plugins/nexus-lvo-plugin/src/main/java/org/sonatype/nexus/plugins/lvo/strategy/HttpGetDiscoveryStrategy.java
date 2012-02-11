@@ -1,44 +1,31 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.plugins.lvo.strategy;
 
 import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.PipedInputStream;
-import java.io.PipedOutputStream;
-import java.util.concurrent.Future;
 
 import org.codehaus.plexus.component.annotations.Component;
 import org.codehaus.plexus.component.annotations.Requirement;
-import org.sonatype.nexus.ahc.AhcProvider;
+import org.restlet.data.ClientInfo;
+import org.restlet.data.Method;
+import org.restlet.data.Request;
+import org.sonatype.nexus.configuration.application.GlobalRestApiSettings;
 import org.sonatype.nexus.plugins.lvo.DiscoveryRequest;
 import org.sonatype.nexus.plugins.lvo.DiscoveryResponse;
 import org.sonatype.nexus.plugins.lvo.DiscoveryStrategy;
 import org.sonatype.nexus.proxy.NoSuchRepositoryException;
-
-import com.ning.http.client.BodyDeferringAsyncHandler;
-import com.ning.http.client.BodyDeferringAsyncHandler.BodyDeferringInputStream;
-import com.ning.http.client.Request;
-import com.ning.http.client.RequestBuilder;
-import com.ning.http.client.Response;
 
 /**
  * This is a "remote" strategy, uses HTTP GET for information fetch from the remoteUrl. Note: this class uses Restlet
@@ -51,24 +38,25 @@ public class HttpGetDiscoveryStrategy
     extends AbstractRemoteDiscoveryStrategy
 {
     @Requirement
-    private AhcProvider ahcProvider;
+    private GlobalRestApiSettings restApiSettings;
 
     public DiscoveryResponse discoverLatestVersion( DiscoveryRequest request )
-        throws NoSuchRepositoryException, IOException
+        throws NoSuchRepositoryException,
+            IOException
     {
         DiscoveryResponse dr = new DiscoveryResponse( request );
 
         // handle
-        InputStream response = handleRequest( getRemoteUrl( request ) );
+        RequestResult response = handleRequest( getRemoteUrl( request ) );
 
         if ( response != null )
         {
             try
             {
-                BufferedReader reader = new BufferedReader( new InputStreamReader( response ) );
-
+                BufferedReader reader = new BufferedReader( new InputStreamReader( response.getInputStream() ) );
+    
                 dr.setVersion( reader.readLine() );
-
+    
                 dr.setSuccessful( true );
             }
             finally
@@ -80,47 +68,19 @@ public class HttpGetDiscoveryStrategy
         return dr;
     }
 
-    protected InputStream handleRequest( String url )
+    protected Request getRestRequest( String url )
     {
-        Request request = new RequestBuilder().setFollowRedirects( true ).setUrl( url ).build();
+        Request rr = new Request( Method.GET, url );
 
-        try
-        {
-            final PipedOutputStream po = new PipedOutputStream();
+        rr.setReferrerRef( restApiSettings.getBaseUrl() );
 
-            final PipedInputStream pi = new PipedInputStream( po );
+        ClientInfo ci = new ClientInfo();
 
-            final BodyDeferringAsyncHandler bdah = new BodyDeferringAsyncHandler( po );
+        ci.setAgent( formatUserAgent() );
 
-            Future<Response> f = ahcProvider.getAsyncHttpClient().executeRequest( request, bdah );
+        rr.setClientInfo( ci );
 
-            BodyDeferringInputStream result = new BodyDeferringInputStream( f, bdah, pi );
-
-            if ( 200 == result.getAsapResponse().getStatusCode() )
-            {
-                return result;
-            }
-            else
-            {
-                result.close();
-
-                return null;
-            }
-        }
-        catch ( IOException e )
-        {
-            getLogger().debug( "Error retrieving lvo data", e );
-        }
-        catch ( InterruptedException e )
-        {
-            getLogger().debug( "Error retrieving lvo data", e );
-        }
-
-        return null;
+        return rr;
     }
 
-    protected String getRemoteUrl( DiscoveryRequest request )
-    {
-        return request.getLvoKey().getRemoteUrl();
-    }
 }

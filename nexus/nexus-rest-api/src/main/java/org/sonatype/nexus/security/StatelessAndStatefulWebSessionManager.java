@@ -1,3 +1,15 @@
+/**
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
+ *
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
+ *
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
+ */
 package org.sonatype.nexus.security;
 
 import java.io.Serializable;
@@ -8,7 +20,9 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 import org.apache.shiro.session.Session;
+import org.apache.shiro.session.mgt.DelegatingSession;
 import org.apache.shiro.session.mgt.SessionContext;
+import org.apache.shiro.session.mgt.SessionKey;
 import org.apache.shiro.session.mgt.SimpleSession;
 import org.apache.shiro.session.mgt.eis.JavaUuidSessionIdGenerator;
 import org.apache.shiro.session.mgt.eis.SessionIdGenerator;
@@ -17,37 +31,89 @@ import org.apache.shiro.web.servlet.ShiroHttpServletRequest;
 import org.apache.shiro.web.servlet.ShiroHttpSession;
 import org.apache.shiro.web.servlet.SimpleCookie;
 import org.apache.shiro.web.session.mgt.DefaultWebSessionManager;
+import org.apache.shiro.web.session.mgt.WebSessionKey;
 import org.apache.shiro.web.util.WebUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.sonatype.nexus.security.filter.authc.NexusHttpAuthenticationFilter;
 
 public class StatelessAndStatefulWebSessionManager
     extends DefaultWebSessionManager
 {
-    private static final Logger log = LoggerFactory.getLogger( DefaultWebSessionManager.class );
+    private static final Logger log = LoggerFactory.getLogger( StatelessAndStatefulWebSessionManager.class );
+
+    public static final String NO_SESSION_HEADER = "X-Nexus-Session";
+    public static final String DO_NOT_STORE_SESSION_KEY = "NO_SESSION";
 
     private SessionIdGenerator fakeSessionIdGenerator = new JavaUuidSessionIdGenerator();
 
     protected Session doCreateSession( SessionContext context )
     {
-        Session session = newSessionInstance( context );
-        if ( log.isTraceEnabled() )
+        Session session;
+        if( WebUtils.isHttp( context ) )
         {
-            log.trace( "Creating session for host {}", session.getHost() );
-        }
+            session = newSessionInstance( context );
+            if ( log.isTraceEnabled() )
+            {
+                log.trace( "Creating session for host {}", session.getHost() );
+            }
 
-        if ( WebUtils.isHttp( context ) && isStatelessClient( WebUtils.getHttpRequest( context ) ) )
-        {   
-            // we still need to set the session id, WHY?
-            ( (SimpleSession) session ).setId( fakeSessionIdGenerator.generateId( session ) );
-            log.debug( "Stateless client sesion {} is not persisted.", session.getId() );
+            HttpServletRequest request = WebUtils.getHttpRequest( context );
+
+            if ( isStatelessClient( request ) )
+            {
+                // we still need to set the session id, WHY?
+                ( (SimpleSession) session ).setId( fakeSessionIdGenerator.generateId( session ) );
+                log.debug( "Stateless client session {} is not persisted.", session.getId() );
+                session.setAttribute( DO_NOT_STORE_SESSION_KEY, Boolean.TRUE );
+            }
+            else
+            {
+                create( session );
+            }
+
+            // add a little more logging.
+            if ( log.isTraceEnabled() )
+            {
+                log.trace( "Session {} was created for User-Agent {}", session.getId(), getUserAgent( request ) );
+            }
         }
         else
         {
-            create( session );
+            log.trace( "Non http request, falling back to default implementation." );
+            session = super.doCreateSession( context );
         }
 
         return session;
+    }
+
+    /**
+     * Does NOT store the session on change if the DO_NOT_STORE_SESSION_KEY is set as an attribute.
+     * @param session
+     */
+    @Override
+    protected void onChange( Session session )
+    {
+        if( !(SimpleSession.class.isInstance( session ) && Boolean.TRUE == session.getAttribute( DO_NOT_STORE_SESSION_KEY )  ) )
+        {
+            super.onChange( session );
+        }
+    }
+
+    /**
+     * If this Session has the DO_NOT_STORE_SESSION_KEY it will be returned as is so it can be directly attached to the subject, otherwise we just call super.
+     * @param session
+     * @param context
+     */
+    @Override
+    protected Session createExposedSession(Session session, SessionContext context)
+    {
+        if( (SimpleSession.class.isInstance( session ) && Boolean.TRUE == session.getAttribute( DO_NOT_STORE_SESSION_KEY )  ) )
+        {
+            return session;
+        }
+
+        return super.createExposedSession( session, context );
     }
 
     @Override
@@ -159,7 +225,19 @@ public class StatelessAndStatefulWebSessionManager
 
     protected boolean isStatelessClient( final ServletRequest request )
     {
+        if( hasNoSessionHeader( request ) )
+        {
+            return true;
+        }
+
+        if( Boolean.TRUE.equals( request.getAttribute( NexusHttpAuthenticationFilter.ANONYMOUS_LOGIN ) ) )
+        {
+            return true;
+        }
+
         final String userAgent = getUserAgent( request );
+
+        log.trace( "Found User-Agent: {} in request", userAgent );
 
         if ( userAgent != null && userAgent.trim().length() > 0 )
         {
@@ -193,18 +271,75 @@ public class StatelessAndStatefulWebSessionManager
                 return true;
             }
 
+            // Nexus
+            if ( userAgent.startsWith( "Nexus/" ) )
+            {
+                return true;
+            }
+
+            // Artifactory
+            if ( userAgent.startsWith( "Artifactory/" ) )
+            {
+                return true;
+            }
+
+            // Apache Archiva
+            if ( userAgent.startsWith( "Apache Archiva/" ) )
+            {
+                return true;
+            }
+
+            // M2Eclipse
+            if ( userAgent.startsWith( "M2Eclipse/" ) )
+            {
+                return true;
+            }
+
+            // Aether
+            if ( userAgent.startsWith( "Aether/" ) )
+            {
+                return true;
+            }
         }
 
         // we can't decided for sure, let's return the safest
         return false;
     }
 
+    /**
+     * Checks for the no session header: "X-Nexus-Session: none".
+     * @param request
+     * @return true if header 'X-Nexus-Session' is 'none', false otherwise.
+     */
+    private boolean hasNoSessionHeader( final ServletRequest request )
+    {
+        //"X-Nexus-Session: none"
+        return "none".equals( getHeaderValue( NO_SESSION_HEADER, request ) );
+    }
+
+    /**
+     * Returns the User-Agent of the request, or null if not set.
+     * @param request
+     * @return
+     */
     private String getUserAgent( final ServletRequest request )
+    {
+        return getHeaderValue( "User-Agent", request );
+    }
+
+    /**
+     * Gets a header value from the request if the ServletRequest is a HttpServletRequest.
+     *
+     * @param headerName
+     * @param request
+     * @return null if request is not HttpServletRequest, or header is not found.
+     */
+    private String getHeaderValue( String headerName, final ServletRequest request )
     {
         if ( request instanceof HttpServletRequest )
         {
-            final String userAgent = ( (HttpServletRequest) request ).getHeader( "User-Agent" );
-            return userAgent;
+            final String headerValue = ( (HttpServletRequest) request ).getHeader( headerName );
+            return headerValue;
         }
         return null;
     }

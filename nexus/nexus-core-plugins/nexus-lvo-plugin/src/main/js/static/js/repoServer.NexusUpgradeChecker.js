@@ -1,49 +1,41 @@
 /*
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
-var checkedNewVersion = false;
-
 Sonatype.Events.addListener( 'nexusStatus', function() {
-  if ( !checkedNewVersion
+  if ( !this.checkedNewVersion
     && Sonatype.lib.Permissions.checkPermission('nexus:status', Sonatype.lib.Permissions.READ)
     && !Ext.isEmpty( Sonatype.utils.editionShort )
-    && !Ext.isEmpty( Sonatype.utils.versionShort )){
+    && !Ext.isEmpty( Sonatype.utils.version)){
     Ext.Ajax.request( {
+      scope: this,
       method: 'GET',
       suppressStatus: [404,401,-1],
       url: Sonatype.config.servicePath + '/lvo/nexus-' +
-        Sonatype.utils.editionShort.substr( 0, 3 ).toLowerCase() + '/' + Sonatype.utils.versionShort,
+        Sonatype.utils.editionShort.substr( 0, 3 ).toLowerCase() + '/' + Sonatype.utils.version,
       success: function( response, options ) {
-        checkedNewVersion = true;
+        this.checkedNewVersion = true;
         var r = Ext.decode( response.responseText );
-        
-        if ( r.response != null && r.response.isSuccessful && r.response.version ) {
-          Sonatype.utils.postWelcomePageAlert(
-            '<span style="color:#000">' +
-            '<b>UPGRADE AVAILABLE:</b> ' +
-            'Nexus ' + Sonatype.utils.edition + ' ' + r.response.version + ' is now available. ' +
-            '<a href="' + r.response.url + '" target="_blank">Download now!</a>' +
-            '</span>' 
-          );
-        }
+
+          // we get 404 if there is no new version, so we always have a valid response here
+        Sonatype.utils.postWelcomePageAlert(
+          '<span style="color:#000">' +
+          '<b>UPGRADE AVAILABLE:</b> ' +
+          'Nexus ' + Sonatype.utils.edition + ' ' + r.response.version + ' is now available. ' +
+          '<a href="' + r.response.url + '" target="_blank">Download now!</a>' +
+          '</span>'
+        );
       },
       failure: function() {
-        checkedNewVersion = true;
+        this.checkedNewVersion = true;
       }
     });
   }

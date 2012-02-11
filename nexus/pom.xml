@@ -1,48 +1,49 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
 
-    Copyright (c) 2008-2011 Sonatype, Inc.
-    All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+    Sonatype Nexus (TM) Open Source Version
+    Copyright (c) 2007-2012 Sonatype, Inc.
+    All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
 
-    This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
-    Public License Version 3 as published by the Free Software Foundation.
+    This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+    which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
 
-    This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
-    warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
-    for more details.
-
-    You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
-    http://www.gnu.org/licenses.
-
-    Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
-    Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
-    All other trademarks are the property of their respective owners.
+    Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+    of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+    Eclipse Foundation. All other trademarks are the property of their respective owners.
 
 -->
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
   <parent>
-    <groupId>org.sonatype.nexus</groupId>
-    <artifactId>nexus-parent</artifactId>
-    <version>21-SNAPSHOT</version>
-    <relativePath>../nexus-parent/pom.xml</relativePath>
+    <groupId>org.sonatype.forge</groupId>
+    <artifactId>forge-parent</artifactId>
+    <version>11</version>
+    <relativePath />
   </parent>
 
+  <groupId>org.sonatype.nexus</groupId>
   <artifactId>nexus</artifactId>
   <packaging>pom</packaging>
   <name>Nexus</name>
-  <version>1.9.2-SNAPSHOT</version>
+  <version>2.1-SNAPSHOT</version>
   <description>Sonatype Nexus Repository Manager</description>
   <inceptionYear>2007</inceptionYear>
 
   <url>${nexus-site-base-url}/nexus</url>
 
+  <scm>
+    <connection>scm:git:git://github.com/sonatype/nexus.git</connection>
+    <developerConnection>scm:git:git@github.com:sonatype/nexus.git</developerConnection>
+    <url>https://github.com/sonatype/nexus</url>
+  </scm>
+
   <mailingLists />
   <licenses>
     <license>
-      <name>GNU Affero General Public License</name>
-      <url>http://www.gnu.org/licenses/agpl.txt</url>
+      <name>Eclipse Public License</name>
+      <url>http://www.eclipse.org/legal/epl-v10.html</url>
     </license>
   </licenses>
   <developers>
@@ -135,73 +136,112 @@
     </contributor>
   </contributors>
 
-  <repositories>
-    <repository>
-      <id>sonatype-forge</id>
-      <url>http://repository.sonatype.org/content/groups/forge</url>
-      <snapshots>
-        <enabled>true</enabled>
-        <updatePolicy>never</updatePolicy>
-      </snapshots>
-      <releases>
-        <enabled>true</enabled>
-        <updatePolicy>never</updatePolicy>
-      </releases>
-    </repository>
-  </repositories>
-  <pluginRepositories>
-    <pluginRepository>
-      <id>sonatype-forge</id>
-      <url>http://repository.sonatype.org/content/groups/forge</url>
-      <snapshots>
-        <enabled>true</enabled>
-        <updatePolicy>never</updatePolicy>
-      </snapshots>
-      <releases>
-        <enabled>true</enabled>
-        <updatePolicy>never</updatePolicy>
-      </releases>
-    </pluginRepository>
-  </pluginRepositories>
-
-  <!-- Shortcuts for outnumbered deps :) -->
   <properties>
-    <maven.indexer.version>4.1.0</maven.indexer.version>
-    <maven.version>3.0.1</maven.version>
-    <aether.version>1.8.1</aether.version>
+    <debug-js>false</debug-js>
+    <nexus-site-base-url>https://repository.sonatype.org/content/sites/maven-sites/nexus-oss</nexus-site-base-url>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+    <nexus.version>${project.version}</nexus.version>
 
-    <aspectj.version>1.6.11</aspectj.version>
-    <spice-timeline.version>2.0</spice-timeline.version>
-    <plexus.appbooter.version>2.1.1</plexus.appbooter.version>
-    <jsw.binaries.version>3.2.3.5</jsw.binaries.version>
-    <plexus-security.version>2.4-SNAPSHOT</plexus-security.version>
-    <shiro.version>1.1.0</shiro.version>
-    <slf4j.version>1.6.1</slf4j.version>
-    <nexus.repository.metadata.version>1.1</nexus.repository.metadata.version>
-    <!-- Shared with nexus-client, hence it is properties'ed -->
-    <plexus.restlet.bridge.version>1.17</plexus.restlet.bridge.version>
-    <micromailer.version>1.1.0</micromailer.version>
-    <restlet.version>1.1.6-SONATYPE-5348-V4</restlet.version>
-    <plexus-jetty6.version>1.7</plexus-jetty6.version>
-    <plexus-task-scheduler.version>1.4-SNAPSHOT</plexus-task-scheduler.version>
-    <plexus-digest.version>1.1</plexus-digest.version>
-    <plexus-cli.version>1.2</plexus-cli.version>
-    <plexus-interpolation.version>1.6</plexus-interpolation.version>
+    <!-- logging configuration used in logback config files to control test logging -->
+    <test.log.level>INFO</test.log.level>
+    <it.test.log.level>INFO</it.test.log.level>
+    <it.nexus.log.level>INFO</it.nexus.log.level>
+
+    <!-- version properties -->
+    <applifecycle.version>1.6</applifecycle.version>
+    <sonatype.plugin.version>1.1.0</sonatype.plugin.version>
+    
+    <!-- Logging -->
+    <slf4j.version>1.6.4</slf4j.version>
+    <logback.version>1.0.0</logback.version>
     <plexus-slf4j-logging.version>1.1</plexus-slf4j-logging.version>
-    <plexus-velocity.version>1.1.7</plexus-velocity.version>
-    <commons-beanutils.version>1.7.0-SONATYPE</commons-beanutils.version>
-    <log4j.version>1.2.14</log4j.version>
-    <plexus-ehcache.version>1.3</plexus-ehcache.version>
-    <plexus-jetty-testsuite.version>1.7</plexus-jetty-testsuite.version>
-    <plexus-app-events.version>1.0.0</plexus-app-events.version>
-    <plexus-swizzle.version>1.2</plexus-swizzle.version>
-    <spice-utils.version>1.0.0</spice-utils.version>
+
+    <aether.version>1.9</aether.version>
+    <aspectj.version>1.6.11</aspectj.version>
+    <commons-beanutils.baseVersion>1.7.0</commons-beanutils.baseVersion>
+    <commons-beanutils.version>${commons-beanutils.baseVersion}-SONATYPE</commons-beanutils.version>
     <enunciate.version>1.20</enunciate.version>
+    <jetty.version>6.1.19</jetty.version>
+    <jsw.binaries.version>3.2.3.5</jsw.binaries.version>
+    <maven.version>3.0.1</maven.version>
+    <micromailer.version>1.1.1</micromailer.version>
+    <nexus.repository.metadata.version>1.2</nexus.repository.metadata.version>
+    <plexus.appbooter.version>2.1.1</plexus.appbooter.version>
+    <plexus-app-events.version>1.0.1</plexus-app-events.version>
+    <plexus-cli.version>1.2</plexus-cli.version>
+    <plexus-digest.version>1.1</plexus-digest.version>
+    <plexus-ehcache.version>1.3</plexus-ehcache.version>
+    <plexus-interpolation.version>1.14</plexus-interpolation.version>
+    <plexus-jetty6.version>1.7</plexus-jetty6.version>
+    <plexus-jetty7.version>1.2</plexus-jetty7.version>
+    <plexus-jetty-testsuite.version>1.8</plexus-jetty-testsuite.version>
+    <plexus.restlet.bridge.version>1.18</plexus.restlet.bridge.version>
+    <plexus-security.version>2.4</plexus-security.version>
+    <plexus-swizzle.version>1.2</plexus-swizzle.version>
+    <plexus-task-scheduler.version>1.6.0</plexus-task-scheduler.version>
+    <plexus-velocity.version>1.1.7</plexus-velocity.version>
+    <restlet.version>1.1.6-SONATYPE-5348-V4</restlet.version>
+    <shiro.version>1.1.0</shiro.version>
+    <spice-timeline.version>2.1</spice-timeline.version>
+    <spice-utils.version>1.0.0</spice-utils.version>
+    <surefire.version>2.10</surefire.version>
+    <!-- HACK: Workaround for issue with IDEA loading nexus-plugins -->
+    <nexus-plugin.type>nexus-plugin</nexus-plugin.type>
   </properties>
 
   <dependencyManagement>
     <dependencies>
+
       <!-- Platform -->
+      <dependency>
+        <groupId>org.sonatype.nexus</groupId>
+        <artifactId>nexus-runtime-platform</artifactId>
+        <version>${project.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+
+      <dependency>
+        <groupId>org.sonatype.plugin</groupId>
+        <artifactId>plugin-api</artifactId>
+        <version>${sonatype.plugin.version}</version>
+        <exclusions>
+          <exclusion>
+            <groupId>javax.inject</groupId>
+            <artifactId>javax.inject</artifactId>
+          </exclusion>
+        </exclusions>
+      </dependency>
+      <dependency>
+        <groupId>org.sonatype.plugin</groupId>
+        <artifactId>plugin-host-api</artifactId>
+        <version>${sonatype.plugin.version}</version>
+        <exclusions>
+          <exclusion>
+            <groupId>javax.inject</groupId>
+            <artifactId>javax.inject</artifactId>
+          </exclusion>
+        </exclusions>
+      </dependency>
+      <dependency>
+        <groupId>org.sonatype.plugin</groupId>
+        <artifactId>plugin-model-api</artifactId>
+        <version>${sonatype.plugin.version}</version>
+        <exclusions>
+          <exclusion>
+            <groupId>javax.inject</groupId>
+            <artifactId>javax.inject</artifactId>
+          </exclusion>
+        </exclusions>
+      </dependency>
+
+      <dependency>
+        <groupId>org.sonatype.appcontext</groupId>
+        <artifactId>appcontext</artifactId>
+        <version>2.1</version>
+      </dependency>
+
       <dependency>
         <groupId>org.sonatype.appbooter.plexus-booters</groupId>
         <artifactId>plexus-app-booter</artifactId>
@@ -259,6 +299,28 @@
         <scope>provided</scope>
       </dependency>
 
+      <!-- Jetty -->
+      <dependency>
+        <groupId>org.mortbay.jetty</groupId>
+        <artifactId>jetty</artifactId>
+        <version>${jetty.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.mortbay.jetty</groupId>
+        <artifactId>jetty-client</artifactId>
+        <version>${jetty.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.mortbay.jetty</groupId>
+        <artifactId>jetty-sslengine</artifactId>
+        <version>${jetty.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.mortbay.jetty</groupId>
+        <artifactId>jetty-util</artifactId>
+        <version>${jetty.version}</version>
+      </dependency>
+
       <!-- Plexus et al -->
       <dependency>
         <groupId>org.sonatype.plexus.appevents</groupId>
@@ -303,6 +365,16 @@
             <artifactId>plexus-container-default</artifactId>
           </exclusion>
         </exclusions>
+      </dependency>
+      <dependency>
+        <groupId>org.sonatype.plexus</groupId>
+        <artifactId>plexus-jetty7</artifactId>
+        <version>${plexus-jetty7.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.sonatype.plexus</groupId>
+        <artifactId>classworlds-configuration-io</artifactId>
+        <version>1.0</version>
       </dependency>
       <dependency>
         <groupId>org.sonatype.plexus</groupId>
@@ -372,24 +444,13 @@
         </exclusions>
       </dependency>
       <dependency>
-        <groupId>org.codehaus.plexus</groupId>
-        <artifactId>plexus-slf4j-logging</artifactId>
-        <version>${plexus-slf4j-logging.version}</version>
-        <exclusions>
-          <exclusion>
-            <groupId>org.codehaus.plexus</groupId>
-            <artifactId>plexus-container-default</artifactId>
-          </exclusion>
-        </exclusions>
-      </dependency>
-      <dependency>
-        <groupId>org.sonatype.micromailer</groupId>
-        <artifactId>micromailer</artifactId>
+        <groupId>org.sonatype.sisu</groupId>
+        <artifactId>sisu-mailer</artifactId>
         <version>${micromailer.version}</version>
         <exclusions>
           <exclusion>
-            <groupId>org.codehaus.plexus</groupId>
-            <artifactId>plexus-container-default</artifactId>
+            <groupId>javax.inject</groupId>
+            <artifactId>javax.inject</artifactId>
           </exclusion>
           <exclusion>
             <groupId>javax.activation</groupId>
@@ -435,13 +496,27 @@
       <dependency>
         <groupId>org.sonatype.configuration</groupId>
         <artifactId>base-configuration</artifactId>
-        <version>1.0</version>
+        <version>1.1.1</version>
         <exclusions>
           <exclusion>
             <groupId>org.codehaus.plexus</groupId>
             <artifactId>plexus-container-default</artifactId>
           </exclusion>
         </exclusions>
+      </dependency>
+
+      <!-- Sisu -->
+      <dependency>
+        <groupId>org.sonatype.sisu</groupId>
+        <artifactId>sisu-charger</artifactId>
+        <version>1.0</version>
+      </dependency>
+
+      <!-- locks -->
+      <dependency>
+        <groupId>org.sonatype.sisu</groupId>
+        <artifactId>sisu-locks</artifactId>
+        <version>0.0.1</version>
       </dependency>
 
       <!-- shiro -->
@@ -523,7 +598,11 @@
           </exclusion>
         </exclusions>
       </dependency>
-
+      <dependency>
+        <groupId>commons-beanutils</groupId>
+        <artifactId>commons-beanutils-bean-collections</artifactId>
+        <version>${commons-beanutils.baseVersion}</version>
+      </dependency>
 
       <!-- SLF4J Logging -->
       <dependency>
@@ -531,35 +610,59 @@
         <artifactId>slf4j-api</artifactId>
         <version>${slf4j.version}</version>
         <type>jar</type>
-      </dependency>
-      <dependency>
-        <groupId>org.slf4j</groupId>
-        <artifactId>slf4j-log4j12</artifactId>
-        <version>${slf4j.version}</version>
-        <type>jar</type>
+        <scope>compile</scope>
       </dependency>
       <dependency>
         <groupId>org.slf4j</groupId>
         <artifactId>jcl-over-slf4j</artifactId>
         <version>${slf4j.version}</version>
         <type>jar</type>
+        <scope>runtime</scope>
       </dependency>
       <dependency>
         <groupId>org.slf4j</groupId>
         <artifactId>jul-to-slf4j</artifactId>
         <version>${slf4j.version}</version>
         <type>jar</type>
+        <scope>runtime</scope>
       </dependency>
       <dependency>
-        <groupId>log4j</groupId>
-        <artifactId>log4j</artifactId>
-        <version>${log4j.version}</version>
+        <groupId>org.slf4j</groupId>
+        <artifactId>log4j-over-slf4j</artifactId>
+        <version>${slf4j.version}</version>
+        <type>jar</type>
+        <scope>runtime</scope>
       </dependency>
-
+      <dependency>
+        <groupId>ch.qos.logback</groupId>
+        <artifactId>logback-classic</artifactId>
+        <version>${logback.version}</version>
+        <type>jar</type>
+        <scope>runtime</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.codehaus.plexus</groupId>
+        <artifactId>plexus-slf4j-logging</artifactId>
+        <version>${plexus-slf4j-logging.version}</version>
+        <type>jar</type>
+        <scope>runtime</scope>
+        <exclusions>
+          <exclusion>
+            <groupId>org.codehaus.plexus</groupId>
+            <artifactId>plexus-container-default</artifactId>
+          </exclusion>
+        </exclusions>
+      </dependency>
+	
       <!-- Maven -->
       <dependency>
         <groupId>org.apache.maven</groupId>
         <artifactId>maven-aether-provider</artifactId>
+        <version>${maven.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.maven</groupId>
+        <artifactId>maven-model-builder</artifactId>
         <version>${maven.version}</version>
       </dependency>
       <dependency>
@@ -570,6 +673,36 @@
       <dependency>
         <groupId>org.apache.maven</groupId>
         <artifactId>maven-repository-metadata</artifactId>
+        <version>${maven.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.maven</groupId>
+        <artifactId>maven-artifact</artifactId>
+        <version>${maven.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.maven</groupId>
+        <artifactId>maven-settings</artifactId>
+        <version>${maven.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.maven</groupId>
+        <artifactId>maven-api</artifactId>
+        <version>${maven.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.maven</groupId>
+        <artifactId>maven-core</artifactId>
+        <version>${maven.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.maven</groupId>
+        <artifactId>maven-plugin-api</artifactId>
+        <version>${maven.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.maven</groupId>
+        <artifactId>maven-compat</artifactId>
         <version>${maven.version}</version>
       </dependency>
 
@@ -593,13 +726,13 @@
         <artifactId>aether-impl</artifactId>
         <version>${aether.version}</version>
       </dependency>
+      <dependency>
+        <groupId>org.sonatype.aether</groupId>
+        <artifactId>aether-connector-wagon</artifactId>
+        <version>${aether.version}</version>
+      </dependency>
 
       <!-- Various commonly used deps -->
-      <dependency>
-        <groupId>com.google.code.google-collections</groupId>
-        <artifactId>google-collect</artifactId>
-        <version>snapshot-20080530</version>
-      </dependency>
       <dependency>
         <groupId>javax.servlet</groupId>
         <artifactId>servlet-api</artifactId>
@@ -618,10 +751,36 @@
         <version>0.9</version>
         <type>jar</type>
       </dependency>
+      
+      <!-- Jackson -->
+      <dependency>
+        <groupId>org.codehaus.jackson</groupId>
+        <artifactId>jackson-core-asl</artifactId>
+        <version>1.9.4</version>
+        <type>jar</type>
+      </dependency>
+      <dependency>
+        <groupId>org.codehaus.jackson</groupId>
+        <artifactId>jackson-mapper-asl</artifactId>
+        <version>1.9.4</version>
+        <type>jar</type>
+      </dependency>
+      <dependency>
+        <groupId>com.fasterxml</groupId>
+        <artifactId>jackson-xml-databind</artifactId>
+        <version>0.6.2</version>
+        <exclusions>
+          <exclusion>
+            <groupId>javax.xml.stream</groupId>
+            <artifactId>stax-api</artifactId>
+          </exclusion>
+        </exclusions>
+      </dependency>
+      
       <dependency>
         <groupId>com.thoughtworks.xstream</groupId>
         <artifactId>xstream</artifactId>
-        <version>1.3.1</version>
+        <version>1.4.2</version>
         <type>jar</type>
       </dependency>
       <dependency>
@@ -700,13 +859,26 @@
       <dependency>
         <groupId>com.ning</groupId>
         <artifactId>async-http-client</artifactId>
-        <version>1.6.3</version>
+        <version>1.6.4</version>
+      </dependency>
+
+      <dependency>
+        <groupId>org.apache.httpcomponents</groupId>
+        <artifactId>httpclient</artifactId>
+        <version>4.1.2</version>
+        <type>jar</type>
+        <exclusions>
+          <exclusion>
+            <groupId>commons-logging</groupId>
+            <artifactId>commons-logging</artifactId>
+          </exclusion>
+        </exclusions>
       </dependency>
 
       <dependency>
         <groupId>commons-httpclient</groupId>
         <artifactId>commons-httpclient</artifactId>
-        <version>3.1</version>
+        <version>3.1.SONATYPE</version>
         <type>jar</type>
         <exclusions>
           <exclusion>
@@ -812,6 +984,13 @@
         <scope>test</scope>
       </dependency>
       <dependency>
+        <groupId>org.mockito</groupId>
+        <artifactId>mockito-core</artifactId>
+        <version>1.9.0-rc1</version>
+        <type>jar</type>
+        <scope>test</scope>
+      </dependency>
+      <dependency>
         <groupId>org.uncommons</groupId>
         <artifactId>reportng</artifactId>
         <version>1.1.2</version>
@@ -827,7 +1006,7 @@
       <dependency>
         <groupId>com.carrotsearch</groupId>
         <artifactId>junit-benchmarks</artifactId>
-        <version>0.3.0-SNAPSHOT</version>
+        <version>0.3.0-SONATYPE</version>
         <scope>test</scope>
       </dependency>
       <!-- h2 used by junit benchmarks to store perf data -->
@@ -837,13 +1016,14 @@
         <version>1.3.154</version>
         <scope>test</scope>
       </dependency>
+      <dependency>
+        <groupId>org.sonatype.http-testing-harness</groupId>
+        <artifactId>server-provider</artifactId>
+        <version>0.4.3</version>
+        <scope>test</scope>
+      </dependency>
 
       <!-- The modules -->
-      <dependency>
-        <groupId>org.apache.maven.indexer</groupId>
-        <artifactId>indexer-artifact</artifactId>
-        <version>${maven.indexer.version}</version>
-      </dependency>
       <dependency>
         <groupId>org.sonatype.nexus</groupId>
         <artifactId>nexus-repository-metadata-api</artifactId>
@@ -870,6 +1050,13 @@
         <version>${project.version}</version>
       </dependency>
       <dependency>
+          <groupId>org.sonatype.nexus</groupId>
+          <artifactId>nexus-api</artifactId>
+          <version>${project.version}</version>
+          <classifier>tests</classifier>
+          <scope>test</scope>
+        </dependency>
+      <dependency>
         <groupId>org.sonatype.nexus</groupId>
         <artifactId>nexus-oss-edition</artifactId>
         <version>${project.version}</version>
@@ -877,6 +1064,11 @@
       <dependency>
         <groupId>org.sonatype.nexus</groupId>
         <artifactId>nexus-configuration</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.sonatype.nexus</groupId>
+        <artifactId>nexus-configuration-model</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
@@ -914,7 +1106,7 @@
         <groupId>org.sonatype.nexus.plugins</groupId>
         <artifactId>nexus-indexer-lucene-plugin</artifactId>
         <version>${project.version}</version>
-        <type>nexus-plugin</type>
+        <type>${nexus-plugin.type}</type>
         <scope>provided</scope>
       </dependency>
       <dependency>
@@ -924,7 +1116,18 @@
       </dependency>
       <dependency>
         <groupId>org.sonatype.nexus</groupId>
+        <artifactId>nexus-webapp</artifactId>
+        <version>${project.version}</version>
+        <type>war</type>
+      </dependency>
+      <dependency>
+        <groupId>org.sonatype.nexus</groupId>
         <artifactId>nexus-rest-api</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.sonatype.nexus</groupId>
+        <artifactId>nexus-rest-api-model</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
@@ -939,6 +1142,26 @@
         <artifactId>nexus-test-common</artifactId>
         <version>${project.version}</version>
         <scope>test</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.sonatype.nexus.tools</groupId>
+        <artifactId>nexus-repository-conversion-tool</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.sonatype.nexus.restlight</groupId>
+        <artifactId>nexus-restlight-stage-client</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.sonatype.nexus.restlight</groupId>
+        <artifactId>nexus-restlight-m2-settings-client</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.sonatype.nexus.restlight</groupId>
+        <artifactId>nexus-restlight-client-common</artifactId>
+        <version>${project.version}</version>
       </dependency>
 
       <!-- Plugins -->
@@ -978,6 +1201,10 @@
           <exclusion>
             <groupId>junit</groupId>
             <artifactId>junit</artifactId>
+          </exclusion>
+          <exclusion>
+            <groupId>log4j</groupId>
+            <artifactId>log4j</artifactId>
           </exclusion>
         </exclusions>
       </dependency>
@@ -1027,14 +1254,33 @@
   <build>
     <plugins>
       <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-enforcer-plugin</artifactId>
+        <version>1.0.1</version>
+        <!--$NO-MVN-MAN-VER$-->
         <executions>
+          <execution>
+            <id>enforce-java</id>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <configuration>
+              <rules>
+                <requireMavenVersion>
+                  <version>[3.0,)</version>
+                </requireMavenVersion>
+                <requireJavaVersion>
+                  <version>[1.6,)</version>
+                </requireJavaVersion>
+              </rules>
+            </configuration>
+          </execution>
           <execution>
             <goals>
               <goal>enforce</goal>
             </goals>
             <!-- we don't need these until JUST BEFORE integration testing, so moving to a later phase to get out of the way of m2eclipse. <phase>compile</phase> -->
-            <id>enforce</id>
+            <id>enforce-dependencies</id>
             <configuration>
               <rules>
                 <bannedDependencies>
@@ -1063,7 +1309,9 @@
                   <excludes>
                     <exclude>*:plexus-component-api</exclude>
                   </excludes>
-                  <message>plexus-component-api conflicts with newer plexus-container-default. You probably added a dependency that is plexus component made with older plexus container.</message>
+                  <message>plexus-component-api conflicts with newer plexus-container-default. You probably added a dependency that is plexus component made with older plexus
+                    container.
+                  </message>
                 </bannedDependencies>
                 <bannedDependencies>
                   <excludes>
@@ -1112,7 +1360,7 @@
                 <bannedDependencies>
                   <searchTransitive>true</searchTransitive>
                   <excludes>
-                    <exclude>org.hamcrest:*:</exclude>
+                    <exclude>org.hamcrest:*</exclude>
                   </excludes>
                   <includes>
                     <include>org.hamcrest:*:1.3.RC2</include>
@@ -1126,6 +1374,28 @@
                   </excludes>
                   <message>Use more specific hamcrest dependencies like hamcrest-core, hamcrest-library</message>
                 </bannedDependencies>
+                <bannedDependencies>
+                  <searchTransitive>true</searchTransitive>
+                  <excludes>
+                    <exclude>org.slf4j:*</exclude>
+                  </excludes>
+                  <includes>
+                    <include>org.slf4j:*:${slf4j.version}</include>
+                  </includes>
+                  <message>Make sure to use the slf4j version defined in nexus parent. See slf4j.version property</message>
+                </bannedDependencies>
+                <bannedDependencies>
+                  <searchTransitive>true</searchTransitive>
+                  <excludes>
+                    <exclude>log4j:log4j:*:jar:test</exclude>
+                  </excludes>
+                  <includes>
+                    <include>log4j:*</include>
+                  </includes>
+
+                  <message>Do not use log4j api directly in tests. Use slf4j api instead.</message>
+                </bannedDependencies>
+
                 <!-- <requirePluginVersions> <banSnapshots>false</banSnapshots> </requirePluginVersions> -->
               </rules>
               <fail>true</fail>
@@ -1136,19 +1406,16 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-source-plugin</artifactId>
-      </plugin>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-jar-plugin</artifactId>
         <executions>
           <execution>
+            <id>attach-sources</id>
+            <phase>package</phase>
             <goals>
-              <goal>test-jar</goal>
+              <goal>jar-no-fork</goal>
             </goals>
           </execution>
         </executions>
       </plugin>
-
       <plugin>
         <artifactId>maven-site-plugin</artifactId>
         <executions>
@@ -1160,9 +1427,80 @@
           </execution>
         </executions>
       </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <configuration>
+          <source>1.6</source>
+          <target>1.6</target>
+        </configuration>
+      </plugin>
+
     </plugins>
+
     <pluginManagement>
       <plugins>
+        <plugin>
+          <groupId>org.sonatype.plugins</groupId>
+          <artifactId>sisu-maven-plugin</artifactId>
+          <version>1.1</version>
+        </plugin>
+        <plugin>
+          <groupId>org.codehaus.plexus</groupId>
+          <artifactId>plexus-component-metadata</artifactId>
+          <version>1.5.5</version>
+          <executions>
+            <execution>
+              <id>process-classes</id>
+              <goals>
+                <goal>generate-metadata</goal>
+              </goals>
+            </execution>
+            <execution>
+              <id>process-test-classes</id>
+              <goals>
+                <goal>generate-test-metadata</goal>
+              </goals>
+            </execution>
+          </executions>
+        </plugin>
+
+        <plugin>
+          <groupId>org.codehaus.modello</groupId>
+          <artifactId>modello-maven-plugin</artifactId>
+          <version>1.4.1</version>
+          <configuration>
+            <useJava5>true</useJava5>
+          </configuration>
+        </plugin>
+
+        <plugin>
+          <groupId>org.sonatype.plugins</groupId>
+          <artifactId>yuicompressor-maven-plugin</artifactId>
+          <version>0.0.2</version>
+          <executions>
+            <execution>
+              <goals>
+                <goal>aggregate</goal>
+              </goals>
+              <configuration>
+                <nosuffix>true</nosuffix>
+                <nomunge>true</nomunge>
+                <nominify>${debug-js}</nominify>
+                <jswarn>false</jswarn>
+                <insertNewLine>true</insertNewLine>
+                <disableOptimizations>true</disableOptimizations>
+              </configuration>
+            </execution>
+          </executions>
+        </plugin>
+
+        <plugin>
+          <groupId>org.sonatype.nexus.plugins</groupId>
+          <artifactId>nexus-test-environment-maven-plugin</artifactId>
+          <version>${project.version}</version>
+        </plugin>
+
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-site-plugin</artifactId>
@@ -1170,7 +1508,7 @@
         </plugin>
         <plugin>
           <artifactId>maven-assembly-plugin</artifactId>
-          <version>2.2-beta-2</version>
+          <version>2.2.2</version>
           <dependencies>
             <dependency>
               <groupId>org.sonatype.spice</groupId>
@@ -1178,7 +1516,34 @@
               <version>1.0</version>
             </dependency>
           </dependencies>
+          <configuration>
+            <tarLongFileMode>gnu</tarLongFileMode>
+          </configuration>
         </plugin>
+
+        <plugin>
+          <artifactId>maven-resources-plugin</artifactId>
+          <version>2.4</version>
+          <configuration>
+            <escapeWindowsPaths>true</escapeWindowsPaths>
+          </configuration>
+        </plugin>
+
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-eclipse-plugin</artifactId>
+          <version>2.6</version>
+          <configuration>
+            <downloadSources>true</downloadSources>
+            <downloadJavadocs>true</downloadJavadocs>
+            <projectNameTemplate>[artifactId]-[version]</projectNameTemplate>
+            <wtpmanifest>true</wtpmanifest>
+            <wtpapplicationxml>true</wtpapplicationxml>
+            <wtpversion>2.0</wtpversion>
+            <manifest>${basedir}/src/main/resources/META-INF/MANIFEST.MF</manifest>
+          </configuration>
+        </plugin>
+
         <plugin>
           <groupId>org.codehaus.mojo</groupId>
           <artifactId>retrotranslator-maven-plugin</artifactId>
@@ -1192,7 +1557,7 @@
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-surefire-plugin</artifactId>
-          <version>2.8.1</version>
+          <version>${surefire.version}</version>
           <configuration>
             <failIfNoTests>false</failIfNoTests>
             <systemPropertyVariables>
@@ -1202,8 +1567,14 @@
               <jub.customkey>${os.name}</jub.customkey>
               <jub.charts.dir>${project.build.directory}/junit-benchmarks</jub.charts.dir>
               <!-- end junit benchmarks config -->
+              <!-- logging configuration properties, see logback*.xml files -->
+              <test.log.level>${test.log.level}</test.log.level>
+              <it.test.log.level>${it.test.log.level}</it.test.log.level>
+              <it.nexus.log.level>${it.nexus.log.level}</it.nexus.log.level>
             </systemPropertyVariables>
-
+            <excludes combine.children="append">
+              <exclude>**/Abstract*</exclude>
+            </excludes>
           </configuration>
         </plugin>
         <plugin>
@@ -1213,7 +1584,7 @@
         </plugin>
         <plugin>
           <artifactId>maven-failsafe-plugin</artifactId>
-          <version>2.8.1</version>
+          <version>${surefire.version}</version>
           <executions>
             <execution>
               <goals>
@@ -1223,6 +1594,9 @@
             </execution>
           </executions>
           <configuration>
+            <excludes combine.children="append">
+              <exclude>**/Abstract*</exclude>
+            </excludes>
             <properties>
               <property>
                 <name>usedefaultlisteners</name>
@@ -1230,22 +1604,44 @@
               </property>
               <property>
                 <name>reporter</name>
-                <value>org.sonatype.nexus.integrationtests.report.SonatypeHTMLReporter</value>
+                <value>org.testng.reporters.JUnitXMLReporter</value>
               </property>
               <property>
                 <name>listener</name>
                 <value>org.sonatype.nexus.integrationtests.report.ProgressListener</value>
               </property>
             </properties>
+            <systemPropertyVariables>
+              <!-- logging configuration properties, see logback*.xml files -->
+              <test.log.level>${test.log.level}</test.log.level>
+              <it.test.log.level>${it.test.log.level}</it.test.log.level>
+              <it.nexus.log.level>${it.nexus.log.level}</it.nexus.log.level>
+            </systemPropertyVariables>
           </configuration>
         </plugin>
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
-          <artifactId>maven-release-plugin</artifactId>
-          <version>2.1</version>
-          <configuration>
-            <autoVersionSubmodules>true</autoVersionSubmodules>
-          </configuration>
+          <artifactId>maven-jar-plugin</artifactId>
+          <executions>
+            <execution>
+              <id>attach-test-jar</id>
+              <goals>
+                <goal>test-jar</goal>
+              </goals>
+              <configuration>
+                <includes>
+                  <include>**/*.class</include>
+                </includes>
+                <excludes>
+                  <exclude>**/*Test.class</exclude>
+                  <exclude>**/*Test$*.class</exclude>
+                  <exclude>**/*IT.class</exclude>
+                  <exclude>**/*IT$*.class</exclude>
+                  <exclude>**/internal/*.class</exclude>
+                </excludes>
+              </configuration>
+            </execution>
+          </executions>
         </plugin>
       </plugins>
     </pluginManagement>
@@ -1275,12 +1671,6 @@
     </plugins>
   </reporting>
 
-  <scm>
-    <connection>scm:git:git://github.com/sonatype/nexus.git</connection>
-    <developerConnection>scm:git:git@github.com:sonatype/nexus.git</developerConnection>
-    <url>https://github.com/sonatype/nexus</url>
-  </scm>
-
   <distributionManagement>
     <site>
       <id>forge-sites</id>
@@ -1296,35 +1686,42 @@
     <module>nexus-logging-extras</module>
     <module>nexus-api</module>
     <module>nexus-oss-edition</module>
+    <module>nexus-configuration-model</module>
     <module>nexus-configuration</module>
     <module>nexus-proxy</module>
     <module>nexus-app</module>
+    <module>nexus-rest-api-model</module>
     <module>nexus-rest-api</module>
     <module>nexus-migration-tool</module>
     <module>nexus-core-plugins</module>
     <module>nexus-webapp</module>
+    <module>nexus-launcher</module>
     <module>nexus-clients</module>
-    <module>nexus-distributions</module>
+    <module>nexus-oss-webapp</module>
+    <module>nexus-oss-webapp-tattletale</module>
+    <module>nexus-stories</module>
     <module>nexus-test</module>
     <module>nexus-test-harness</module>
   </modules>
 
   <profiles>
+
     <profile>
-      <id>skipTests</id>
-      <build>
-        <pluginManagement>
-          <plugins>
-            <plugin>
-              <artifactId>maven-surefire-plugin</artifactId>
-              <configuration>
-                <skipTests>true</skipTests>
-              </configuration>
-            </plugin>
-          </plugins>
-        </pluginManagement>
-      </build>
+      <id>debug</id>
+      <activation>
+        <property>
+          <name>debug</name>
+          <value>true</value>
+        </property>
+      </activation>
+      <properties>
+        <!-- configure test logging properties to debug levels -->
+        <test.log.level>DEBUG</test.log.level>
+        <it.test.log.level>DEBUG</it.test.log.level>
+        <it.nexus.log.level>DEBUG</it.nexus.log.level>
+      </properties>
     </profile>
+
     <profile>
       <id>skipBenchmarks</id>
       <build>
@@ -1342,6 +1739,7 @@
         </pluginManagement>
       </build>
     </profile>
+
     <profile>
       <id>enunciate</id>
       <activation>
@@ -1379,6 +1777,13 @@
           <version>1.1.1</version>
           <scope>provided</scope>
         </dependency>
+        <!-- this dependency contains an annotation mentioned in com.google.common... package-infos. enunciate will report an error if it is missing. -->
+        <dependency>
+          <groupId>com.google.code.findbugs</groupId>
+          <artifactId>jsr305</artifactId>
+          <version>1.3.9</version>
+          <scope>provided</scope>
+        </dependency>
       </dependencies>
       <build>
         <plugins>
@@ -1412,8 +1817,389 @@
               <configFile>enunciate.xml</configFile>
             </configuration>
           </plugin>
+
+          <plugin>
+            <groupId>com.mycila.maven-license-plugin</groupId>
+            <artifactId>maven-license-plugin</artifactId>
+          </plugin>
         </plugins>
       </build>
+    </profile>
+
+    <!-- grid quick deploy 20 to 25 mins avoiding ITs -->
+    <profile>
+      <id>grid-deploy</id>
+      <properties>
+        <it.test>void</it.test>
+        <invoker.skip>true</invoker.skip>
+        <test-env.skip>true</test-env.skip>
+      </properties>
+    </profile>
+
+    <!-- pre code push profile to be run by a developer before push to scm, eventually the default profile without a profile -->
+    <profile>
+      <id>prepush</id>
+      <activation>
+        <activeByDefault>true</activeByDefault>
+      </activation>
+      <properties>
+        <!-- FIXME only run a select group of unit tests possibly to speeed the build -->
+        <it.test>void</it.test>
+        <failIfNoTests>false</failIfNoTests>
+        <invoker.skip>true</invoker.skip>
+        <!-- <source.skip>true</source.skip>
+        <enunciate.skip>true</enunciate.skip> -->
+        <test-env.skip>true</test-env.skip>
+      </properties>
+      <build>
+        <pluginManagement>
+          <plugins>
+            <plugin>
+              <artifactId>maven-surefire-plugin</artifactId>
+              <configuration>
+                <excludes>
+                  <exclude>**/*LRTest.java</exclude>
+                </excludes>
+              </configuration>
+            </plugin>
+          </plugins>
+        </pluginManagement>
+      </build>
+
+    </profile>
+
+    <!-- dummy profile for activating integration tests -->
+    <profile>
+      <id>it</id>
+      <activation>
+        <property>
+          <name>it</name>
+          <value>true</value>
+        </property>
+      </activation>
+      <!-- FIXME, make running cargo ITs part of this profile? -->
+    </profile>
+
+    <!-- Nexus quick build profiles: effects of -Pquick: tests will be compiled but not run, n-t-e-p will assemble the test environments effects of -Dquick: tests will not be compiled,
+      n-t-e-p and other test-related plugins will be skipped entirely -->
+    <profile>
+      <id>quick</id>
+      <activation>
+        <property>
+          <name>quick</name>
+        </property>
+      </activation>
+      <properties>
+        <test>void</test>
+        <it.test>void</it.test>
+        <failIfNoTests>false</failIfNoTests>
+        <invoker.skip>true</invoker.skip>
+        <source.skip>true</source.skip>
+        <enunciate.skip>true</enunciate.skip>
+        <tattletale.skip>true</tattletale.skip>
+        <test-env.skip>true</test-env.skip>
+        <license.skip>true</license.skip>
+        <!-- FIXME there are still some dependency unpacking going on that could be removed somehow -->
+      </properties>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.sonatype.nexus.plugins</groupId>
+            <artifactId>nexus-test-environment-maven-plugin</artifactId>
+            <configuration>
+              <testSkip>true</testSkip>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+
+    <profile>
+      <id>skipTests</id>
+      <activation>
+        <property>
+          <name>quick</name>
+        </property>
+      </activation>
+      <properties>
+        <maven.test.skip>true</maven.test.skip>
+      </properties>
+      <build>
+        <pluginManagement>
+          <plugins>
+            <plugin>
+              <artifactId>maven-surefire-plugin</artifactId>
+              <configuration>
+                <skipTests>true</skipTests>
+              </configuration>
+            </plugin>
+            <plugin>
+              <groupId>org.apache.maven.plugins</groupId>
+              <artifactId>maven-jar-plugin</artifactId>
+              <executions>
+                <execution>
+                  <id>attach-test-jar</id>
+                  <phase>none</phase>
+                </execution>
+              </executions>
+            </plugin>
+          </plugins>
+        </pluginManagement>
+      </build>
+    </profile>
+
+    <profile>
+      <id>m2e</id>
+      <activation>
+        <property>
+          <name>m2e.version</name>
+        </property>
+      </activation>
+      <build>
+        <pluginManagement>
+          <plugins>
+            <!-- "new" M2E like 1.0 "IndIgor" -->
+            <plugin>
+              <groupId>org.eclipse.m2e</groupId>
+              <artifactId>lifecycle-mapping</artifactId>
+              <version>1.0.0</version>
+              <configuration>
+                <lifecycleMappingMetadata>
+                  <pluginExecutions>
+                    <pluginExecution>
+                      <pluginExecutionFilter>
+                        <groupId>org.codehaus.plexus</groupId>
+                        <artifactId>plexus-component-metadata</artifactId>
+                        <versionRange>[1.5.5,)</versionRange>
+                        <goals>
+                          <goal>merge-metadata</goal>
+                        </goals>
+                      </pluginExecutionFilter>
+                      <action>
+                        <execute />
+                      </action>
+                    </pluginExecution>
+                    <pluginExecution>
+                      <pluginExecutionFilter>
+                        <groupId>org.sonatype.plugins</groupId>
+                        <artifactId>modello-plugin-upgrade</artifactId>
+                        <versionRange>[1.0,)</versionRange>
+                        <goals>
+                          <goal>upgrade</goal>
+                        </goals>
+                      </pluginExecutionFilter>
+                      <action>
+                        <execute />
+                      </action>
+                    </pluginExecution>
+                    <pluginExecution>
+                      <pluginExecutionFilter>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-dependency-plugin</artifactId>
+                        <versionRange>[2.0,)</versionRange>
+                        <goals>
+                          <goal>unpack</goal>
+                        </goals>
+                      </pluginExecutionFilter>
+                      <action>
+                        <ignore />
+                      </action>
+                    </pluginExecution>
+                    <pluginExecution>
+                      <pluginExecutionFilter>
+                        <groupId>org.sonatype.nexus.plugins</groupId>
+                        <artifactId>nexus-test-environment-maven-plugin</artifactId>
+                        <versionRange>[0,)</versionRange>
+                        <!-- says "all", disregard version -->
+                        <goals>
+                          <goal>setup-environment</goal>
+                          <goal>package</goal>
+                        </goals>
+                      </pluginExecutionFilter>
+                      <action>
+                        <ignore />
+                      </action>
+                    </pluginExecution>
+                    <pluginExecution>
+                      <pluginExecutionFilter>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-enforcer-plugin</artifactId>
+                        <versionRange>[1.0,)</versionRange>
+                        <goals>
+                          <goal>enforce</goal>
+                        </goals>
+                      </pluginExecutionFilter>
+                      <action>
+                        <ignore />
+                      </action>
+                    </pluginExecution>
+                    <pluginExecution>
+                      <pluginExecutionFilter>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-invoker-plugin</artifactId>
+                        <versionRange>[1.6,)</versionRange>
+                        <goals>
+                          <goal>install</goal>
+                        </goals>
+                      </pluginExecutionFilter>
+                      <action>
+                        <ignore />
+                      </action>
+                    </pluginExecution>
+                  </pluginExecutions>
+                </lifecycleMappingMetadata>
+              </configuration>
+            </plugin>
+          </plugins>
+        </pluginManagement>
+
+        <plugins>
+          <plugin>
+            <!-- "oldie" M2E like 0.12.x -->
+            <groupId>org.maven.ide.eclipse</groupId>
+            <artifactId>lifecycle-mapping</artifactId>
+            <version>0.9.9</version>
+            <configuration>
+              <mappingId>customizable</mappingId>
+              <configurators>
+                <configurator id="org.maven.ide.eclipse.jdt.javaConfigurator" />
+                <configurator id="org.maven.ide.eclipse.modello.modelloConfigurator" />
+                <configurator id="org.maven.ide.eclipse.plexus.annotations.plexusConfigurator" />
+                <configurator id="org.maven.ide.eclipse.mavenarchiver.pomProperties" />
+              </configurators>
+              <mojoExecutions>
+                <mojoExecution>org.apache.maven.plugins:maven-resources-plugin::</mojoExecution>
+                <mojoExecution>org.sonatype.plugins:yuicompressor-maven-plugin::</mojoExecution>
+              </mojoExecutions>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+
+    <profile>
+      <id>coverage</id>
+      <build>
+        <plugins>
+          <plugin>
+            <artifactId>maven-clean-plugin</artifactId>
+            <configuration>
+              <filesets>
+                <fileset>
+                  <directory>${basedir}</directory>
+                  <includes>
+                    <include>coverage.ec</include>
+                  </includes>
+                  <followSymlinks>true</followSymlinks>
+                </fileset>
+              </filesets>
+            </configuration>
+          </plugin>
+
+          <plugin>
+            <groupId>org.sonatype.maven.plugin</groupId>
+            <artifactId>emma-maven-plugin</artifactId>
+            <version>1.2</version>
+            <executions>
+              <execution>
+                <phase>process-test-resources</phase>
+                <goals>
+                  <goal>instrument</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-surefire-plugin</artifactId>
+            <configuration>
+              <classesDirectory>${project.build.directory}/generated-classes/emma/classes</classesDirectory>
+              <systemPropertyVariables>
+                <java.io.tmpdir>${project.build.directory}/surefire-tmp</java.io.tmpdir>
+              </systemPropertyVariables>
+            </configuration>
+          </plugin>
+
+          <plugin>
+            <groupId>org.sonatype.maven.plugin</groupId>
+            <artifactId>emma4it-maven-plugin</artifactId>
+            <version>1.3</version>
+            <executions>
+              <execution>
+                <id>instrument</id>
+                <phase>pre-integration-test</phase>
+                <goals>
+                  <goal>instrument</goal>
+                </goals>
+                <configuration>
+                  <jarSets>
+                    <jarSet>
+                      <directory>${project.build.directory}/nexus</directory>
+                      <includes>
+                        <include>**/nexus*.jar</include>
+                      </includes>
+                    </jarSet>
+                  </jarSets>
+                </configuration>
+              </execution>
+              <execution>
+                <id>merge</id>
+                <phase>verify</phase>
+                <goals>
+                  <goal>merge</goal>
+                </goals>
+                <configuration>
+                  <searchPath>${basedir}</searchPath>
+                </configuration>
+              </execution>
+              <execution>
+                <id>report</id>
+                <phase>verify</phase>
+                <goals>
+                  <goal>report</goal>
+                </goals>
+                <configuration>
+                  <sourceSets>
+                    <sourceSet>
+                      <directory>${basedir}</directory>
+                      <includes>
+                        <include>**/src/main/java/</include>
+                      </includes>
+                    </sourceSet>
+                  </sourceSets>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+    <profile>
+      <id>release</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>com.mycila.maven-license-plugin</groupId>
+            <artifactId>maven-license-plugin</artifactId>
+            <executions>
+              <execution>
+                <phase>generate-resources</phase>
+                <goals>
+                  <goal>check</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+    <!-- HACK: Workaround for issue with IDEA loading nexus-plugins -->
+    <profile>
+      <id>idea</id>
+      <properties>
+        <nexus-plugin.type>jar</nexus-plugin.type>
+      </properties>
     </profile>
   </profiles>
 </project>

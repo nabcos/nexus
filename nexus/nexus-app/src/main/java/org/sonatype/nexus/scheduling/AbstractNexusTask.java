@@ -1,38 +1,35 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.scheduling;
 
 import java.util.List;
 import java.util.Map;
 
+import org.apache.commons.lang.time.DateFormatUtils;
+import org.apache.commons.lang.time.DurationFormatUtils;
 import org.apache.shiro.subject.Subject;
 import org.apache.shiro.util.ThreadContext;
 import org.codehaus.plexus.component.annotations.Requirement;
-import org.sonatype.nexus.error.reporting.ErrorReportRequest;
-import org.sonatype.nexus.error.reporting.ErrorReportingManager;
-import org.sonatype.nexus.feeds.FeedRecorder;
-import org.sonatype.nexus.feeds.SystemProcess;
+import org.sonatype.nexus.scheduling.events.NexusTaskEventStarted;
+import org.sonatype.nexus.scheduling.events.NexusTaskEventStoppedCanceled;
+import org.sonatype.nexus.scheduling.events.NexusTaskEventStoppedDone;
+import org.sonatype.nexus.scheduling.events.NexusTaskEventStoppedFailed;
 import org.sonatype.plexus.appevents.ApplicationEventMulticaster;
 import org.sonatype.scheduling.AbstractSchedulerTask;
 import org.sonatype.scheduling.ScheduledTask;
 import org.sonatype.scheduling.TaskInterruptedException;
 import org.sonatype.scheduling.TaskState;
+import org.sonatype.scheduling.TaskUtil;
 
 public abstract class AbstractNexusTask<T>
     extends AbstractSchedulerTask<T>
@@ -41,15 +38,7 @@ public abstract class AbstractNexusTask<T>
     public static final long A_DAY = 24L * 60L * 60L * 1000L;
 
     @Requirement
-    private ErrorReportingManager errorManager;
-
-    @Requirement
     private ApplicationEventMulticaster applicationEventMulticaster;
-    
-    @Requirement
-    private FeedRecorder feedRecorder;
-
-    private SystemProcess prc;
 
     protected AbstractNexusTask()
     {
@@ -143,7 +132,12 @@ public abstract class AbstractNexusTask<T>
     public final T call()
         throws Exception
     {
-        prc = feedRecorder.systemProcessStarted( getAction(), getMessage() );
+        getLogger().info( getLoggedMessage( "started" ) );
+        final long started = System.currentTimeMillis();
+
+        // fire event
+        final NexusTaskEventStarted<T> startedEvent = new NexusTaskEventStarted<T>( this );
+        applicationEventMulticaster.notifyEventListeners( startedEvent );
 
         T result = null;
 
@@ -157,7 +151,19 @@ public abstract class AbstractNexusTask<T>
 
             result = doRun();
 
-            feedRecorder.systemProcessFinished( prc, getMessage() );
+            if ( TaskUtil.getCurrentProgressListener().isCanceled() )
+            {
+                getLogger().info( getLoggedMessage( "canceled", started ) );
+
+                applicationEventMulticaster.notifyEventListeners( new NexusTaskEventStoppedCanceled<T>( this,
+                    startedEvent ) );
+            }
+            else
+            {
+                getLogger().info( getLoggedMessage( "finished", started ) );
+
+                applicationEventMulticaster.notifyEventListeners( new NexusTaskEventStoppedDone<T>( this, startedEvent ) );
+            }
 
             afterRun();
 
@@ -165,29 +171,32 @@ public abstract class AbstractNexusTask<T>
         }
         catch ( Exception e )
         {
+            // this if below is to catch TaskInterrputedEx in tasks that does not handle it
+            // and let it propagate.
             if ( e instanceof TaskInterruptedException )
             {
+                getLogger().info( getLoggedMessage( "canceled", started ) );
+
                 // just return, nothing happened just task cancelled
-                feedRecorder.systemProcessCanceled( prc, getMessage() );
+                applicationEventMulticaster.notifyEventListeners( new NexusTaskEventStoppedCanceled<T>( this,
+                    startedEvent ) );
 
                 return null;
             }
             else
             {
-                feedRecorder.systemProcessBroken( prc, e );
+                if ( getLogger().isDebugEnabled() )
+                {
+                    getLogger().warn( getLoggedMessage( "failed", started ), e );
+                }
+                else
+                {
+                    getLogger().warn( getLoggedMessage( "failed", started ) + ": " + e.getMessage() );
+                }
 
                 // notify that there was a failure
-                applicationEventMulticaster.notifyEventListeners( new NexusTaskFailureEvent<T>( this, e ) );
-
-                if ( errorManager.isEnabled() )
-                {
-                    ErrorReportRequest request = new ErrorReportRequest();
-                    request.setThrowable( e );
-                    request.getContext().put( "taskClass", getClass().getName() );
-                    request.getContext().putAll( getParameters() );
-
-                    errorManager.handleError( request );
-                }
+                applicationEventMulticaster.notifyEventListeners( new NexusTaskEventStoppedFailed<T>( this,
+                    startedEvent, e ) );
 
                 throw e;
             }
@@ -196,6 +205,19 @@ public abstract class AbstractNexusTask<T>
         {
             subject.logout();
         }
+    }
+
+    protected String getLoggedMessage( final String action )
+    {
+        return String.format( "Scheduled task (%s) %s :: %s", getName(), action, getMessage() );
+    }
+
+    protected String getLoggedMessage( final String action, final long started )
+    {
+        final String startedStr = DateFormatUtils.ISO_DATETIME_TIME_ZONE_FORMAT.format( started );
+        final String durationStr = DurationFormatUtils.formatDurationHMS( System.currentTimeMillis() - started );
+
+        return String.format( "%s (started %s, runtime %s)", getLoggedMessage( action ), startedStr, durationStr );
     }
 
     protected void beforeRun()

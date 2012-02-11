@@ -1,20 +1,14 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.index;
 
@@ -59,7 +53,6 @@ import org.apache.maven.index.MatchHighlightMode;
 import org.apache.maven.index.MatchHighlightRequest;
 import org.apache.maven.index.NexusIndexer;
 import org.apache.maven.index.SearchType;
-import org.apache.maven.index.artifact.Gav;
 import org.apache.maven.index.artifact.VersionUtils;
 import org.apache.maven.index.context.ContextMemberProvider;
 import org.apache.maven.index.context.DefaultIndexingContext;
@@ -86,8 +79,9 @@ import org.codehaus.plexus.util.FileUtils;
 import org.codehaus.plexus.util.IOUtil;
 import org.codehaus.plexus.util.StringUtils;
 import org.sonatype.nexus.configuration.application.NexusConfiguration;
+import org.sonatype.nexus.logging.Slf4jPlexusLogger;
 import org.sonatype.nexus.maven.tasks.SnapshotRemover;
-import org.sonatype.nexus.mime.MimeUtil;
+import org.sonatype.nexus.mime.MimeSupport;
 import org.sonatype.nexus.proxy.IllegalOperationException;
 import org.sonatype.nexus.proxy.ItemNotFoundException;
 import org.sonatype.nexus.proxy.LocalStorageException;
@@ -106,6 +100,7 @@ import org.sonatype.nexus.proxy.item.uid.IsHiddenAttribute;
 import org.sonatype.nexus.proxy.maven.MavenProxyRepository;
 import org.sonatype.nexus.proxy.maven.MavenRepository;
 import org.sonatype.nexus.proxy.maven.RepositoryPolicy;
+import org.sonatype.nexus.proxy.maven.gav.Gav;
 import org.sonatype.nexus.proxy.registry.ContentClass;
 import org.sonatype.nexus.proxy.registry.RepositoryRegistry;
 import org.sonatype.nexus.proxy.repository.GroupRepository;
@@ -150,8 +145,7 @@ public class DefaultIndexerManager
 
     private static final Map<String, ReadWriteLock> locks = new HashMap<String, ReadWriteLock>();
 
-    @Requirement
-    private Logger logger;
+    private Logger logger = Slf4jPlexusLogger.getPlexusLogger( getClass() );
 
     @Requirement
     private NexusIndexer nexusIndexer;
@@ -168,11 +162,11 @@ public class DefaultIndexerManager
     @Requirement
     private RepositoryRegistry repositoryRegistry;
 
-    @Requirement( role = IndexCreator.class )
-    private List<IndexCreator> indexCreators;
-
     @Requirement( hint = "maven2" )
     private ContentClass maven2;
+
+    @Requirement( role = IndexCreator.class )
+    private List<IndexCreator> indexCreators;
 
     @Requirement
     private IndexArtifactFilter indexArtifactFilter;
@@ -181,7 +175,7 @@ public class DefaultIndexerManager
     private ArtifactContextProducer artifactContextProducer;
 
     @Requirement
-    private MimeUtil mimeUtil;
+    private MimeSupport mimeSupport;
 
     @Requirement
     private IndexTreeView indexTreeView;
@@ -611,8 +605,8 @@ public class DefaultIndexerManager
                 return;
             }
 
-            final RepositoryItemUidLock uidLock =  item.getRepositoryItemUid().createLock();
-            
+            final RepositoryItemUidLock uidLock = item.getRepositoryItemUid().getLock();
+
             uidLock.lock( Action.read );
 
             try
@@ -651,7 +645,7 @@ public class DefaultIndexerManager
                             if ( ai.sha1 == null )
                             {
                                 // if repo has no sha1 checksum, odd nexus one
-                                ai.sha1 = item.getAttributes().get( DigestCalculatingInspector.DIGEST_SHA1_KEY );
+                                ai.sha1 = item.getRepositoryItemAttributes().get( DigestCalculatingInspector.DIGEST_SHA1_KEY );
                             }
                         }
                     }
@@ -663,7 +657,6 @@ public class DefaultIndexerManager
             finally
             {
                 uidLock.unlock();
-                uidLock.release();
             }
         }
     }
@@ -726,10 +719,13 @@ public class DefaultIndexerManager
             }
 
             ArtifactContext ac = null;
+            
+            // we need to convert Nexus Gav to Indexer Gav
+            org.apache.maven.index.artifact.Gav igav = GavUtils.convert( gav );
 
             try
             {
-                ac = new ArtifactContext( null, null, null, ai, gav );
+                ac = new ArtifactContext( null, null, null, ai, igav );
             }
             catch ( IllegalArgumentException e )
             {
@@ -748,8 +744,8 @@ public class DefaultIndexerManager
             // NEXUS-814: we should not delete always
             if ( !item.getItemContext().containsKey( SnapshotRemover.MORE_TS_SNAPSHOTS_EXISTS_FOR_GAV ) )
             {
-                final RepositoryItemUidLock uidLock = item.getRepositoryItemUid().createLock();
-                
+                final RepositoryItemUidLock uidLock = item.getRepositoryItemUid().getLock();
+
                 uidLock.lock( Action.read );
 
                 try
@@ -759,7 +755,6 @@ public class DefaultIndexerManager
                 finally
                 {
                     uidLock.unlock();
-                    uidLock.release();
                 }
             }
             else
@@ -868,6 +863,7 @@ public class DefaultIndexerManager
 
         if ( isAlreadyBeingIndexed( repository.getId() ) )
         {
+            logAlreadyBeingIndexed( repository.getId(), "re-indexing" );
             return;
         }
 
@@ -890,7 +886,7 @@ public class DefaultIndexerManager
             if ( repository.getRepositoryKind().isFacetAvailable( ProxyRepository.class ) )
             {
                 TaskUtil.checkInterruption();
-                
+
                 downloadRepositoryIndex( repository.adaptToFacet( ProxyRepository.class ), fullReindex );
             }
 
@@ -949,7 +945,7 @@ public class DefaultIndexerManager
                 for ( Repository member : members )
                 {
                     TaskUtil.checkInterruption();
-                    
+
                     downloadRepositoryIndex( member, processedRepositoryIds );
                 }
             }
@@ -958,7 +954,7 @@ public class DefaultIndexerManager
         if ( repository.getRepositoryKind().isFacetAvailable( ProxyRepository.class ) )
         {
             TaskUtil.checkInterruption();
-            
+
             downloadRepositoryIndex( repository.adaptToFacet( ProxyRepository.class ), false );
         }
     }
@@ -991,6 +987,7 @@ public class DefaultIndexerManager
 
         if ( isAlreadyBeingIndexed( repository.getId() ) )
         {
+            logAlreadyBeingIndexed( repository.getId(), "downloading index" );
             return false;
         }
 
@@ -1002,7 +999,7 @@ public class DefaultIndexerManager
         try
         {
             TaskUtil.checkInterruption();
-            
+
             // just keep the context 'out of service' while indexing, will be added at end
             boolean shouldDownloadRemoteIndex = mpr.isDownloadRemoteIndexes();
 
@@ -1209,7 +1206,7 @@ public class DefaultIndexerManager
                 for ( Repository member : members )
                 {
                     TaskUtil.checkInterruption();
-                    
+
                     publishRepositoryIndex( member, processedRepositoryIds );
                 }
             }
@@ -1244,6 +1241,7 @@ public class DefaultIndexerManager
 
         if ( isAlreadyBeingIndexed( repository.getId() ) )
         {
+            logAlreadyBeingIndexed( repository.getId(), "publishing index" );
             return;
         }
 
@@ -1281,7 +1279,7 @@ public class DefaultIndexerManager
                 for ( File file : files )
                 {
                     TaskUtil.checkInterruption();
-                    
+
                     storeIndexItem( repository, file, context );
                 }
             }
@@ -1352,7 +1350,7 @@ public class DefaultIndexerManager
             ResourceStoreRequest request = new ResourceStoreRequest( path );
             DefaultStorageFileItem fItem =
                 new DefaultStorageFileItem( repository, request, true, true, new PreparedContentLocator( fis,
-                    mimeUtil.getMimeType( file ) ) );
+                    mimeSupport.guessMimeTypeFromPath( repository.getMimeRulesSource(), file.getAbsolutePath() ) ) );
 
             if ( context.getTimestamp() == null )
             {
@@ -2316,4 +2314,12 @@ public class DefaultIndexerManager
         // if I can't get a read lock means someone else has the write lock (index tasks do write lock)
         return !locked;
     }
+
+    private void logAlreadyBeingIndexed( final String repositoryId, final String processName )
+    {
+        getLogger().info(
+            String.format( "Repository '%s' is already in the process of being re-indexed. Skipping %s'.",
+                repositoryId, processName ) );
+    }
+
 }

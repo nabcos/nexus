@@ -1,19 +1,14 @@
 /*
- * Copyright (c) 2008-2011 Sonatype, Inc. All rights reserved. Includes the
- * third-party code listed at
- * http://www.sonatype.com/products/nexus/attributions. This program is free
- * software: you can redistribute it and/or modify it only under the terms of
- * the GNU Affero General Public License Version 3 as published by the Free
- * Software Foundation. This program is distributed in the hope that it will be
- * useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero
- * General Public License Version 3 for more details. You should have received a
- * copy of the GNU Affero General Public License Version 3 along with this
- * program. If not, see http://www.gnu.org/licenses. Sonatype Nexus (TM) Open
- * Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus
- * are trademarks of Sonatype, Inc. Apache Maven is a trademark of the Apache
- * Foundation. M2Eclipse is a trademark of the Eclipse Foundation. All other
- * trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
+ *
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
+ *
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 /*
  * Service Schedule Edit/Create panel layout and controller
@@ -40,30 +35,6 @@ Sonatype.repoServer.SchedulesEditPanel = function(config) {
 
   this.customTypes = {};
 
-  this.actions = {
-    refresh : new Ext.Action({
-          text : 'Refresh',
-          iconCls : 'st-icon-refresh',
-          scope : this,
-          handler : this.reloadAll
-        }),
-    deleteAction : new Ext.Action({
-          text : 'Delete',
-          scope : this,
-          handler : this.deleteHandler
-        }),
-    stopAction : new Ext.Action({
-          text : 'Stop',
-          scope : this,
-          handler : this.stopHandler
-        }),
-    run : new Ext.Action({
-          text : 'Run',
-          scope : this,
-          handler : this.runHandler
-        })
-  };
-
   this.stopButton = new Ext.Button({
     id : 'schedule-stop-btn',
     text : 'Cancel',
@@ -72,11 +43,7 @@ Sonatype.repoServer.SchedulesEditPanel = function(config) {
     scope : this,
     handler : this.stopHandler,
     disabled : true
-      /*
-       * FIXME need to check with tamas what is the correct permission ,disabled :
-       * !this.sp.checkPermission('nexus:tasksstop', this.sp.PUT)
-       */
-    });
+      });
 
   this.runButton = new Ext.Button({
         id : 'schedule-run-btn',
@@ -86,6 +53,27 @@ Sonatype.repoServer.SchedulesEditPanel = function(config) {
         scope : this,
         handler : this.runHandler,
         disabled : true
+      });
+
+  this.deleteButton = new Ext.Button({
+        id : 'schedule-delete-btn',
+        text : 'Delete',
+        icon : Sonatype.config.resourcePath + '/images/icons/delete.png',
+        cls : 'x-btn-text-icon',
+        scope : this,
+        handler : this.deleteHandler,
+        disabled : true
+      });
+
+  this.disableEditingHeader = new Ext.Panel({
+        id : 'disablingMsg',
+        name : 'disablingMsg',
+        layout : 'table',
+        hidden : true,
+        style : 'font-size: 18px; padding: 5px 0px 5px 15px',
+        items : [{
+              html : '<b>This is scheduled to be run.  It can\'t be edited or deleted.</b><br><hr/>'
+            }]
       });
 
   // Methods that will take the incoming json data and map over to the ui
@@ -229,15 +217,21 @@ Sonatype.repoServer.SchedulesEditPanel = function(config) {
       }, {
         name : 'typeId'
       }, {
-        name : 'status'
+        name : 'readableStatus'
       }, {
         name : 'alertEmail'
       }, {
         name : 'schedule'
       }, {
-        name : 'nextRunTime'
+        name : 'nextRunTimeInMillis',
+        convert : function(v) {
+          return v?new Date(v):'n/a';
+        }
       }, {
-        name : 'lastRunTime'
+        name : 'lastRunTimeInMillis',
+        convert : function(v) {
+          return v?new Date(v):'n/a';
+        }
       }, {
         name : 'lastRunResult'
       }]);
@@ -344,6 +338,9 @@ Sonatype.repoServer.SchedulesEditPanel = function(config) {
       });
 
   this.COMBO_WIDTH = 300;
+  
+  this.timeZone = new Date().toTimeString();
+  this.timeZone = this.timeZone.substring(this.timeZone.indexOf(" "));
 
   // Build the form
   this.formConfig = {};
@@ -361,7 +358,7 @@ Sonatype.repoServer.SchedulesEditPanel = function(config) {
       labelSeparator : ''
     },
 
-    items : [{
+    items : [/* this.disableEditingHeader, */{
           xtype : 'hidden',
           name : 'id'
         }, {
@@ -486,6 +483,7 @@ Sonatype.repoServer.SchedulesEditPanel = function(config) {
                       xtype : 'timefield',
                       fieldLabel : 'Start Time',
                       itemCls : 'required-field',
+                      afterText : this.timeZone,
                       helpText : ht.startTime,
                       name : 'startTime',
                       width : 75,
@@ -517,6 +515,7 @@ Sonatype.repoServer.SchedulesEditPanel = function(config) {
                       xtype : 'timefield',
                       fieldLabel : 'Start Time',
                       itemCls : 'required-field',
+                      afterText : this.timeZone,
                       helpText : ht.startTime,
                       name : 'startTime',
                       width : 75,
@@ -548,6 +547,7 @@ Sonatype.repoServer.SchedulesEditPanel = function(config) {
                       xtype : 'timefield',
                       fieldLabel : 'Recurring Time',
                       itemCls : 'required-field',
+                      afterText : this.timeZone,
                       helpText : ht.recurringTime,
                       name : 'recurringTime',
                       width : 75,
@@ -579,6 +579,7 @@ Sonatype.repoServer.SchedulesEditPanel = function(config) {
                       xtype : 'timefield',
                       fieldLabel : 'Recurring Time',
                       itemCls : 'required-field',
+                      afterText : this.timeZone,
                       helpText : ht.recurringTime,
                       name : 'recurringTime',
                       width : 75,
@@ -620,6 +621,7 @@ Sonatype.repoServer.SchedulesEditPanel = function(config) {
                       xtype : 'timefield',
                       fieldLabel : 'Recurring Time',
                       itemCls : 'required-field',
+                      afterText : this.timeZone,
                       helpText : ht.recurringTime,
                       name : 'recurringTime',
                       width : 75,
@@ -891,15 +893,7 @@ Sonatype.repoServer.SchedulesEditPanel = function(config) {
               scope : this,
               handler : this.addResourceHandler,
               disabled : !this.sp.checkPermission('nexus:tasks', this.sp.CREATE)
-            }, this.runButton, this.stopButton, {
-              id : 'schedule-delete-btn',
-              text : 'Delete',
-              icon : Sonatype.config.resourcePath + '/images/icons/delete.png',
-              cls : 'x-btn-text-icon',
-              scope : this,
-              handler : this.deleteHandler,
-              disabled : !this.sp.checkPermission('nexus:tasks', this.sp.DELETE)
-            }],
+            }, this.runButton, this.stopButton, this.deleteButton],
 
         // grid view options
         ds : this.schedulesDataStore,
@@ -926,23 +920,23 @@ Sonatype.repoServer.SchedulesEditPanel = function(config) {
               id : 'schedule-config-service-type-col'
             }, {
               header : 'Status',
-              dataIndex : 'status',
-              width : 175,
+              dataIndex : 'readableStatus',
+              width : 100,
               id : 'schedule-config-service-status-col'
             }, {
               header : 'Schedule',
               dataIndex : 'schedule',
-              width : 175,
+              width : 100,
               id : 'schedule-config-service-schedule-col'
             }, {
               header : 'Next Run',
-              dataIndex : 'nextRunTime',
-              width : 175,
+              dataIndex : 'nextRunTimeInMillis',
+              width : 250,
               id : 'schedule-config-service-next-run-col'
             }, {
               header : 'Last Run',
-              dataIndex : 'lastRunTime',
-              width : 175,
+              dataIndex : 'lastRunTimeInMillis',
+              width : 250,
               id : 'schedule-config-service-last-run-col'
             }, {
               header : 'Last Result',
@@ -957,7 +951,6 @@ Sonatype.repoServer.SchedulesEditPanel = function(config) {
         }
       });
   this.schedulesGridPanel.getSelectionModel().on('rowselect', this.rowSelect, this);
-  this.schedulesGridPanel.on('rowcontextmenu', this.contextClick, this);
 
   Sonatype.repoServer.SchedulesEditPanel.superclass.constructor.call(this, {
         layout : 'border',
@@ -994,8 +987,13 @@ Ext.extend(Sonatype.repoServer.SchedulesEditPanel, Ext.Panel, {
 
       // Dump the currently stored data and requery for everything
       reloadAll : function() {
+        var gridSelectModel = this.schedulesGridPanel.getSelectionModel();
+        gridSelectModel.clearSelections();
+        this.formCards.getLayout().setActiveItem(0);
+
         this.runButton.disable();
         this.stopButton.disable();
+        this.deleteButton.disable();
 
         this.schedulesDataStore.removeAll();
         this.schedulesDataStore.reload();
@@ -1010,7 +1008,6 @@ Ext.extend(Sonatype.repoServer.SchedulesEditPanel, Ext.Panel, {
               }
             }, this.formCards);
 
-        this.formCards.getLayout().setActiveItem(0);
         // //Enable add button on refresh
         // this.schedulesGridPanel.getTopToolbar().items.get('schedule-add-btn').enable();
       },
@@ -1036,7 +1033,6 @@ Ext.extend(Sonatype.repoServer.SchedulesEditPanel, Ext.Panel, {
       },
 
       saveHandler : function(formInfoObj) {
-
         var allValid = false;
         allValid = formInfoObj.formPanel.form.isValid();
 
@@ -1064,7 +1060,18 @@ Ext.extend(Sonatype.repoServer.SchedulesEditPanel, Ext.Panel, {
             dataModifiers : this.submitDataModFuncs[serviceSchedule],
             serviceDataObj : Sonatype.repoServer.referenceData.schedule[serviceSchedule],
             isNew : isNew,
-            scope : this
+            scope : this,
+            success : function() {
+              if (this.sp.checkPermission('nexus:tasksrun', this.sp.READ))
+              {
+                this.runButton.enable();
+              }
+              else
+              {
+                this.runButton.disable();
+              }
+              this.stopButton.disable();
+            }
               // extra option to send to callback, instead of conditioning on
               // method
             });
@@ -1098,7 +1105,7 @@ Ext.extend(Sonatype.repoServer.SchedulesEditPanel, Ext.Panel, {
           gridSelectModel.clearSelections();
         }
 
-        // delete row from grid if canceling a new repo form
+        // delete row from grid if cancelling a new repo form
         if (formInfoObj.isNew)
         {
           store.remove(store.getById(formInfoObj.formPanel.id));
@@ -1233,41 +1240,7 @@ Ext.extend(Sonatype.repoServer.SchedulesEditPanel, Ext.Panel, {
       deleteCallback : function(options, isSuccess, response) {
         if (isSuccess)
         {
-          var resourceId = options.cbPassThru.resourceId;
-          var formLayout = this.formCards.getLayout();
-          var gridSelectModel = this.schedulesGridPanel.getSelectionModel();
-          var store = this.schedulesGridPanel.getStore();
-
-          if (formLayout.activeItem.id == resourceId)
-          {
-            this.formCards.remove(resourceId, true);
-            if (this.formCards.items.length > 0)
-            {
-              formLayout.setActiveItem(this.formCards.items.length - 1);
-              // select the coordinating row in the grid, or none if back to
-              // default
-              var i = store.indexOfId(formLayout.activeItem.id);
-              if (i >= 0)
-              {
-                gridSelectModel.selectRow(i);
-              }
-              else
-              {
-                gridSelectModel.clearSelections();
-              }
-            }
-            else
-            {
-              formLayout.setActiveItem(0);
-              gridSelectModel.clearSelections();
-            }
-          }
-          else
-          {
-            this.formCards.remove(resourceId, true);
-          }
-
-          store.remove(store.getById(resourceId));
+          this.reloadAll();
         }
         else
         {
@@ -1280,14 +1253,27 @@ Ext.extend(Sonatype.repoServer.SchedulesEditPanel, Ext.Panel, {
         {
           var rec = this.ctxRecord ? this.ctxRecord : this.schedulesGridPanel.getSelectionModel().getSelected();
 
-          Ext.Ajax.request({
-                callback : this.stopCallback,
-                cbPassThru : {
-                  resourceId : rec.id
-                },
+          Sonatype.MessageBox.show({
+                animEl : this.schedulesGridPanel.getEl(),
+                title : 'Cancel Scheduled Task?',
+                msg : 'Cancel the ' + rec.get('name') + ' scheduled task?',
+                buttons : Sonatype.MessageBox.YESNO,
                 scope : this,
-                method : 'DELETE',
-                url : rec.data.resourceURI + '?cancelOnly=true'
+                icon : Sonatype.MessageBox.QUESTION,
+                fn : function(btnName) {
+                  if (btnName == 'yes' || btnName == 'ok')
+                  {
+                    Ext.Ajax.request({
+                          callback : this.stopCallback,
+                          cbPassThru : {
+                            resourceId : rec.id
+                          },
+                          scope : this,
+                          method : 'DELETE',
+                          url : Sonatype.config.repos.urls.scheduleRun + '/' + rec.data.id + '?cancelOnly=true'
+                        });
+                  }
+                }
               });
         }
       },
@@ -1393,11 +1379,11 @@ Ext.extend(Sonatype.repoServer.SchedulesEditPanel, Ext.Panel, {
                     return false;
                   })).data.name,
               typeId : receivedData.resource.typeId,
-              status : receivedData.status,
+              readableStatus : receivedData.readableStatus,
               alertEmail : receivedData.resource.alertEmail,
               schedule : receivedData.resource.schedule,
-              nextRunTime : receivedData.nextRunTime,
-              lastRunTime : receivedData.lastRunTime,
+              nextRunTimeInMillis : receivedData.nextRunTimeInMillis?new Date(receivedData.nextRunTimeInMillis):'n/a',
+              lastRunTimeInMillis : receivedData.lastRunTimeInMillis?new Date(receivedData.lastRunTimeInMillis):'n/a',
               lastRunResult : receivedData.lastRunResult
             };
 
@@ -1452,6 +1438,41 @@ Ext.extend(Sonatype.repoServer.SchedulesEditPanel, Ext.Panel, {
             var sortState = this.schedulesDataStore.getSortState();
             this.schedulesDataStore.sort(sortState.field, sortState.direction);
           }
+          
+        // NEXUS-4365: after a save action, panel state is broken: fields are enabled but empty, combo box values are missing.
+        // -> rebuild panel after save action
+        var formLayout = this.formCards.getLayout();
+        var fp = action.options.fpanel;
+        this.formCards.remove(fp.id, true);
+
+        // switch to empty
+        formLayout.setActiveItem(0);
+        
+        var store = this.schedulesGridPanel.getStore();
+        this.schedulesGridPanel.getSelectionModel().selectRow(store.indexOfId(fp.id));
+        // END NEXUS-4365
+    }
+    else if ( action.type == 'sonatypeLoad' )
+    {
+        // NEXUS-4363 disable the south panel after service-type-config-card values are loaded
+        var formPanel = action.options.fpanel;
+        var readableStatus = formPanel.readableStatus;
+        if (!readableStatus || readableStatus == 'Waiting' || readableStatus == '')
+        {
+        //this.disableEditingHeader.setVisible(false);
+        // only layout if change is needed
+        if ( formPanel.disabled )
+        {
+            formPanel.enable();
+            formPanel.doLayout();
+        }
+        }
+        else if (!formPanel.disabled)
+        {
+        //this.disableEditingHeader.setVisible(true);
+        formPanel.disable();
+        formPanel.doLayout();
+        }
         }
       },
 
@@ -1469,9 +1490,9 @@ Ext.extend(Sonatype.repoServer.SchedulesEditPanel, Ext.Panel, {
                 })).data.name);
         rec.set('alertEmail', receivedData.resource.alertEmail);
         rec.set('schedule', receivedData.resource.schedule);
-        rec.set('status', receivedData.status);
-        rec.set('nextRunTime', receivedData.nextRunTime);
-        rec.set('lastRunTime', receivedData.lastRunTime);
+        rec.set('readableStatus', receivedData.readableStatus);
+        rec.set('nextRunTimeInMillis', receivedData.nextRunTimeInMillis?new Date(receivedData.nextRunTimeInMillis):'n/a');
+        rec.set('lastRunTimeInMillis', receivedData.lastRunTimeInMillis?new Date(receivedData.lastRunTimeInMillis):'n/a');
         rec.set('lastRunResult', receivedData.lastRunResult);
         rec.commit();
         rec.endEdit();
@@ -1491,7 +1512,15 @@ Ext.extend(Sonatype.repoServer.SchedulesEditPanel, Ext.Panel, {
         // }
         else if (action.failureType == Ext.form.Action.CONNECT_FAILURE)
         {
-          Sonatype.utils.connectionError(action.response, 'There is an error communicating with the server.')
+          if (action.response.responseText.indexOf("There is no task with ID=") > -1 )
+          {
+            Sonatype.MessageBox.alert('Selected task was removed', 'The selected task was removed by another process and cannot be displayed.');
+            this.reloadAll();
+          }
+          else
+          {
+            Sonatype.utils.connectionError(action.response, 'There is an error communicating with the server.');
+          }
         }
         else if (action.failureType == Ext.form.Action.LOAD_FAILURE)
         {
@@ -1509,24 +1538,38 @@ Ext.extend(Sonatype.repoServer.SchedulesEditPanel, Ext.Panel, {
               dataModifiers : modFuncs,
               scope : this
             });
+
       },
 
       rowSelect : function(selectionModel, index, rec) {
         this.ctxRow = this.schedulesGridPanel.view.getRow(index);
         this.ctxRecord = this.schedulesGridPanel.store.getAt(index);
 
-        var status = rec.data.status;
+        this.runButton.disable();
+        this.stopButton.disable();
+        if (this.sp.checkPermission('nexus:tasks', this.sp.DELETE))
+        {
+            this.deleteButton.enable();
+        }
+        else
+        {
+            this.deleteButton.disable();
+        }
+
+        var readableStatus = rec.data.readableStatus;
+
         if (rec.data.name.substring(0, 4) == 'New ')
         {
           this.runButton.disable();
           this.stopButton.disable();
         }
-        else if (!(status == 'SUBMITTED' || status == 'WAITING' || status == 'BROKEN'))
+        else if (readableStatus == 'Cancelling')
         {
-          this.stopButton.enable();
+          this.stopButton.disable();
           this.runButton.disable();
+          this.deleteButton.disable();
         }
-        else
+        else if (readableStatus == 'Waiting')
         {
           if (this.sp.checkPermission('nexus:tasksrun', this.sp.READ))
           {
@@ -1537,6 +1580,18 @@ Ext.extend(Sonatype.repoServer.SchedulesEditPanel, Ext.Panel, {
             this.runButton.disable();
           }
           this.stopButton.disable();
+        }
+        else
+        {
+          if (this.sp.checkPermission('nexus:tasksrun', this.sp.READ))
+          {
+            this.stopButton.enable();
+          }
+          else
+          {
+            this.stopButton.disable();
+          }
+          this.runButton.disable();
         }
 
         var id = rec.id; // note: rec.id is unique for new resources and equal
@@ -1638,59 +1693,12 @@ Ext.extend(Sonatype.repoServer.SchedulesEditPanel, Ext.Panel, {
 
           this.formCards.add(formPanel);
         }
+        // save readable status
+        formPanel.readableStatus = readableStatus;
 
         // always set active
         this.formCards.getLayout().setActiveItem(formPanel);
         formPanel.doLayout();
-      },
-
-      contextClick : function(grid, index, e) {
-        this.contextHide();
-
-        if (e.target.nodeName == 'A')
-          return; // no menu on links
-
-        this.ctxRow = this.schedulesGridPanel.view.getRow(index);
-        this.ctxRecord = this.schedulesGridPanel.store.getAt(index);
-        Ext.fly(this.ctxRow).addClass('x-node-ctx');
-
-        // @todo: would be faster to pre-render the six variations of the menu
-        // for whole instance
-        var menu = new Ext.menu.Menu({
-              id : 'schedules-grid-ctx',
-              items : [this.actions.refresh]
-            });
-
-        if (this.sp.checkPermission('nexus:tasks', this.sp.DELETE))
-        {
-          menu.add(this.actions.deleteAction);
-        }
-
-        if (this.sp.checkPermission('nexus:tasksrun', this.sp.READ) && (this.ctxRecord.data.status == 'SUBMITTED' || this.ctxRecord.data.status == 'WAITING' || this.ctxRecord.data.status == 'BROKEN'))
-        {
-          menu.add(this.actions.run);
-        }
-
-        if (
-        // FIXME need to check with tamas what is the correct permission,
-        // this.sp.checkPermission('nexus:tasksstop', this.sp.PUT) &&
-        !(this.ctxRecord.data.status == 'SUBMITTED' || this.ctxRecord.data.status == 'WAITING' || this.ctxRecord.data.status == 'BROKEN'))
-        {
-          menu.add(this.actions.stopAction);
-        }
-
-        menu.on('hide', this.contextHide, this);
-        e.stopEvent();
-        menu.showAt(e.getXY());
-      },
-
-      contextHide : function() {
-        if (this.ctxRow)
-        {
-          Ext.fly(this.ctxRow).removeClass('x-node-ctx');
-          this.ctxRow = null;
-          this.ctxRecord = null;
-        }
       },
 
       serviceTypeSelectHandler : function(combo, record, index) {
@@ -1934,10 +1942,12 @@ Ext.extend(Sonatype.repoServer.SchedulesEditPanel, Ext.Panel, {
             break;
           }
         }
-        var hours = parseInt(val.substring(0, val.indexOf(':')), 10);
-        var minutes = val.substring(val.indexOf(':') + 1, val.indexOf(':') + 3);
 
-        var importedTime = hours + ':' + minutes;
+        var startDate = new Date(Number(srcObj.startDate));
+        var hours = startDate.getHours();
+        var minutes = startDate.getMinutes();
+
+        var importedTime = (hours<10?'0':'') + hours + ':' + (minutes<10?'0':'') + minutes;
         selectedStartTime.setValue(importedTime);
         return importedTime;
       },
@@ -1955,10 +1965,12 @@ Ext.extend(Sonatype.repoServer.SchedulesEditPanel, Ext.Panel, {
             break;
           }
         }
-        var hours = parseInt(val.substring(0, val.indexOf(':')), 10);
-        var minutes = val.substring(val.indexOf(':') + 1, val.indexOf(':') + 3);
 
-        var importedTime = hours + ':' + minutes;
+        var startDate = new Date(Number(srcObj.startDate));
+        var hours = startDate.getHours();
+        var minutes = startDate.getMinutes();
+
+        var importedTime = (hours<10?'0':'') + hours + ':' + (minutes<10?'0':'') + minutes;
         selectedRecurringTime.setValue(importedTime);
         return importedTime;
       },

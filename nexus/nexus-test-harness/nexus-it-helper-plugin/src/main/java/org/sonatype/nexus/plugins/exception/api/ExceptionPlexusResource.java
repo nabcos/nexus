@@ -18,6 +18,8 @@
  */
 package org.sonatype.nexus.plugins.exception.api;
 
+import java.io.IOException;
+
 import org.codehaus.plexus.component.annotations.Component;
 import org.codehaus.plexus.component.annotations.Requirement;
 import org.restlet.Context;
@@ -76,7 +78,7 @@ public class ExceptionPlexusResource
             
             manager.assembleBundle( req );
         }
-        catch ( Exception e )
+        catch ( IOException e )
         {
             getLogger().error( "Unable to assemble bundle.", e );
             

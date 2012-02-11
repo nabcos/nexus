@@ -20,7 +20,7 @@ package org.sonatype.nexus.error.reporting;
 
 import java.io.File;
 
-class FileListingHelper
+public class FileListingHelper
 {
     public static final String LINE_SEPERATOR = System.getProperty("line.separator");
     

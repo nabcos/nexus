@@ -1,20 +1,14 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.rest.indexng;
 
@@ -29,6 +23,7 @@ import javax.ws.rs.GET;
 import javax.ws.rs.Path;
 import javax.ws.rs.QueryParam;
 
+import org.apache.lucene.queryParser.ParseException;
 import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.maven.index.ArtifactInfo;
 import org.apache.maven.index.ArtifactInfoFilter;
@@ -71,6 +66,7 @@ import org.sonatype.nexus.rest.model.SearchResponse;
 import org.sonatype.nexus.util.SystemPropertiesHelper;
 import org.sonatype.plexus.rest.resource.PathProtectionDescriptor;
 import org.sonatype.plexus.rest.resource.PlexusResource;
+import org.sonatype.plexus.rest.resource.PlexusResourceException;
 
 @Component( role = PlexusResource.class, hint = "SearchNGIndexPlexusResource" )
 @Path( SearchNGIndexPlexusResource.RESOURCE_URI )
@@ -142,16 +138,11 @@ public class SearchNGIndexPlexusResource
     private static final int COLLAPSE_OVERRIDE_TRESHOLD = SystemPropertiesHelper.getInteger(
         "plexus.search.ga.collapseOverrideThreshold", DEFAULT_COLLAPSE_OVERRIDE_TRESHOLD );
 
+    // doing "plain search" 3 times in case of AlreadyClosedExce
+    private final int RETRIES = 3;
+
     public static final String RESOURCE_URI = "/lucene/search";
 
-    /**
-     * Separate logger for "diagnostic" messages regarding searchNG. Just add following line to log4j.properties of
-     * Nexus (in sonatype-work/nexus/conf directory) to get diagnostic loglines about search:
-     * 
-     * <pre>
-     * log4j.logger.search.ng.diagnostic = DEBUG
-     * </pre>
-     */
     private Logger searchDiagnosticLogger = LoggerFactory.getLogger( "search.ng.diagnostic" );
 
     @Requirement( role = Searcher.class )
@@ -285,9 +276,6 @@ public class SearchNGIndexPlexusResource
 
         SearchNGResponse result = new SearchNGResponse();
 
-        // doing "plain search" 3 times in case of AlreadyClosedExce
-        final int RETRIES = 3;
-
         int runCount = 0;
 
         while ( runCount < RETRIES )
@@ -295,17 +283,6 @@ public class SearchNGIndexPlexusResource
             try
             {
                 List<ArtifactInfoFilter> filters = new ArrayList<ArtifactInfoFilter>();
-
-                // filters.add( new ArtifactInfoFilter()
-                // {
-                // public boolean accepts( IndexingContext ctx, ArtifactInfo ai )
-                // {
-                // System.out.println( "    " + ai.context + " : " + ai.toString() + " -- " + ai.getLuceneScore()
-                // + " -- " + ai.getAttributes().get( Explanation.class.getName() ) );
-                //
-                // return true;
-                // }
-                // } );
 
                 // we need to save this reference to later
                 SystemWideLatestVersionCollector systemWideCollector = new SystemWideLatestVersionCollector();
@@ -322,7 +299,8 @@ public class SearchNGIndexPlexusResource
                 try
                 {
                     searchResult =
-                        searchByTerms( terms, repositoryId, from, count, exact, expandVersion, collapseResults, filters );
+                        searchByTerms( terms, repositoryId, from, count, exact, expandVersion, collapseResults, filters,
+                                       searchers );
 
                     if ( searchResult == null )
                     {
@@ -338,9 +316,7 @@ public class SearchNGIndexPlexusResource
                         if ( !result.isTooManyResults() )
                         {
                             // if we had collapseResults ON, and the totalHits are larger than actual (filtered)
-                            // results,
-                            // and
-                            // the actual result count is below COLLAPSE_OVERRIDE_TRESHOLD,
+                            // results, and the actual result count is below COLLAPSE_OVERRIDE_TRESHOLD,
                             // and full result set is smaller than HIT_LIMIT
                             // then repeat without collapse
                             if ( collapseResults && result.getData().size() < searchResult.getTotalHitsCount()
@@ -414,86 +390,102 @@ public class SearchNGIndexPlexusResource
         return searchDiagnosticLogger;
     }
 
-    private IteratorSearchResponse searchByTerms( final Map<String, String> terms, final String repositoryId,
+    /* UT */ IteratorSearchResponse searchByTerms( final Map<String, String> terms, final String repositoryId,
                                                   final Integer from, final int count, final Boolean exact,
                                                   final Boolean expandVersion, final Boolean collapseResults,
-                                                  List<ArtifactInfoFilter> filters )
+                                                  final List<ArtifactInfoFilter> filters, final List<Searcher> searchers )
         throws NoSuchRepositoryException, ResourceException, IOException
     {
-        for ( Searcher searcher : searchers )
+        try
         {
-            if ( searcher.canHandle( terms ) )
+            for ( Searcher searcher : searchers )
             {
-                SearchType searchType = searcher.getDefaultSearchType();
-
-                if ( exact != null )
+                if ( searcher.canHandle( terms ) )
                 {
-                    if ( exact )
+                    SearchType searchType = searcher.getDefaultSearchType();
+
+                    if ( exact != null )
                     {
-                        searchType = SearchType.EXACT;
-                    }
-                    else
-                    {
-                        searchType = SearchType.SCORED;
-                    }
-                }
-
-                // copy the list, to be able to modify it but do not interleave with potential recursive calls
-                List<ArtifactInfoFilter> actualFilters = new ArrayList<ArtifactInfoFilter>( filters );
-
-                if ( collapseResults )
-                {
-                    // filters should affect only Keyword and GAVSearch!
-                    // TODO: maybe we should left this to the given Searcher implementation to handle (like kw and gav
-                    // searcer is)
-                    // Downside would be that REST query params would be too far away from incoming call (too spread)
-                    if ( searcher instanceof KeywordSearcher || searcher instanceof MavenCoordinatesSearcher )
-                    {
-                        UniqueArtifactFilterPostprocessor filter = new UniqueArtifactFilterPostprocessor();
-
-                        filter.addField( MAVEN.GROUP_ID );
-                        filter.addField( MAVEN.ARTIFACT_ID );
-                        filter.addField( MAVEN.PACKAGING );
-                        filter.addField( MAVEN.CLASSIFIER );
-                        filter.addField( MAVEN.REPOSITORY_ID );
-
-                        if ( Boolean.TRUE.equals( expandVersion ) )
+                        if ( exact )
                         {
-                            filter.addField( MAVEN.VERSION );
+                            searchType = SearchType.EXACT;
                         }
+                        else
+                        {
+                            searchType = SearchType.SCORED;
+                        }
+                    }
 
-                        // add this last, to collapse results but _after_ collectors collects!
-                        actualFilters.add( filter );
+                    // copy the list, to be able to modify it but do not interleave with potential recursive calls
+                    List<ArtifactInfoFilter> actualFilters = new ArrayList<ArtifactInfoFilter>( filters );
+
+                    if ( collapseResults )
+                    {
+                        // filters should affect only Keyword and GAVSearch!
+                        // TODO: maybe we should left this to the given Searcher implementation to handle (like kw and gav
+                        // searcher is)
+                        // Downside would be that REST query params would be too far away from incoming call (too spread)
+                        if ( searcher instanceof KeywordSearcher || searcher instanceof MavenCoordinatesSearcher )
+                        {
+                            UniqueArtifactFilterPostprocessor filter = new UniqueArtifactFilterPostprocessor();
+
+                            filter.addField( MAVEN.GROUP_ID );
+                            filter.addField( MAVEN.ARTIFACT_ID );
+                            filter.addField( MAVEN.PACKAGING );
+                            filter.addField( MAVEN.CLASSIFIER );
+                            filter.addField( MAVEN.REPOSITORY_ID );
+
+                            if ( Boolean.TRUE.equals( expandVersion ) )
+                            {
+                                filter.addField( MAVEN.VERSION );
+                            }
+
+                            // add this last, to collapse results but _after_ collectors collects!
+                            actualFilters.add( filter );
+                        }
+                    }
+
+                    final IteratorSearchResponse searchResponse =
+                        searcher.flatIteratorSearch( terms, repositoryId, from, count, null, false, searchType,
+                                                     actualFilters );
+
+                    if ( searchResponse != null )
+                    {
+                        if ( collapseResults && searchResponse.getTotalHitsCount() < COLLAPSE_OVERRIDE_TRESHOLD )
+                        {
+                            searchResponse.close();
+
+                            // FIXME: fix this, this is ugly
+                            // We are returning null, to hint that we need UNCOLLAPSED search!
+                            // Needed, to be able to "signal" the fact that we are overriding collapsed switch
+                            // since we have to send it back in DTOs to REST client
+                            return null;
+
+                            // old code was a recursive call:
+                            // this was a "collapsed" search (probably initiated by UI), and we have less then treshold hits
+                            // override collapse
+                            // return searchByTerms( terms, repositoryId, from, count, exact, expandVersion, false, filters
+                            // );
+                        }
+                        else
+                        {
+                            return searchResponse;
+                        }
                     }
                 }
-
-                final IteratorSearchResponse searchResponse =
-                    searcher.flatIteratorSearch( terms, repositoryId, from, count, null, false, searchType,
-                        actualFilters );
-
-                if ( searchResponse != null )
-                {
-                    if ( collapseResults && searchResponse.getTotalHitsCount() < COLLAPSE_OVERRIDE_TRESHOLD )
-                    {
-                        searchResponse.close();
-
-                        // FIXME: fix this, this is ugly
-                        // We are returning null, to hint that we need UNCOLLAPSED search!
-                        // Needed, to be able to "signal" the fact that we are overriding collapsed switch
-                        // since we have to send it back in DTOs to REST client
-                        return null;
-
-                        // old code was a recursive call:
-                        // this was a "collapsed" search (probably initiated by UI), and we have less then treshold hits
-                        // override collapse
-                        // return searchByTerms( terms, repositoryId, from, count, exact, expandVersion, false, filters
-                        // );
-                    }
-                    else
-                    {
-                        return searchResponse;
-                    }
-                }
+            }
+        }
+        catch ( IllegalArgumentException e )
+        {
+            if ( e.getCause() instanceof ParseException )
+            {
+                // NEXUS-4372: illegal query -> 400 response
+                throw new PlexusResourceException( Status.CLIENT_ERROR_BAD_REQUEST, e.getCause(),
+                                                   getNexusErrorResponse( "search", e.getCause().getMessage() ) );
+            }
+            else
+            {
+                throw e;
             }
         }
 

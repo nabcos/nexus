@@ -1,20 +1,14 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.mock;
 
@@ -26,13 +20,13 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.util.Date;
 
-import org.apache.log4j.Logger;
 import org.apache.maven.index.artifact.Gav;
 import org.apache.maven.model.Model;
 import org.apache.maven.model.io.xpp3.MavenXpp3Reader;
 import org.apache.maven.wagon.ConnectionException;
 import org.apache.maven.wagon.ResourceDoesNotExistException;
 import org.apache.maven.wagon.TransferFailedException;
+import org.apache.maven.wagon.Wagon;
 import org.apache.maven.wagon.authentication.AuthenticationException;
 import org.apache.maven.wagon.authorization.AuthorizationException;
 import org.codehaus.plexus.PlexusContainer;
@@ -41,7 +35,9 @@ import org.codehaus.plexus.component.repository.exception.ComponentLookupExcepti
 import org.codehaus.plexus.context.Context;
 import org.codehaus.plexus.personality.plexus.lifecycle.phase.Initializable;
 import org.codehaus.plexus.personality.plexus.lifecycle.phase.InitializationException;
-import org.sonatype.appbooter.PlexusAppBooter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.sonatype.nexus.integrationtests.TestContext;
 import org.sonatype.nexus.mock.rest.MockHelper;
 import org.sonatype.nexus.mock.util.PropUtil;
 import org.sonatype.nexus.test.utils.EventInspectorsUtil;
@@ -66,7 +62,7 @@ public abstract class NexusMockTestCase
 
     protected String testName;
 
-    protected static Logger log = Logger.getLogger( NexusMockTestCase.class );
+    protected static Logger log = LoggerFactory.getLogger( NexusMockTestCase.class );
 
     @Requirement
     private PlexusContainer container = PlexusObjectFactory.getContainer();
@@ -89,17 +85,18 @@ public abstract class NexusMockTestCase
                 webappRoot = new File( "../nexus-webapp/src/main/webapp" );
                 if ( !webappRoot.exists() )
                 {
-                    webappRoot = new File( root, "runtime/apps/nexus/webapp" );
+                    webappRoot = new File( root, "nexus" );
                 }
             }
 
             nexusBaseURL = TestProperties.getString( "nexus.base.url" );
 
             Context context = container.getContext();
-            Assert.assertNotNull(context);
+            Assert.assertNotNull( context );
 
-            env = new MockNexusEnvironment( (PlexusAppBooter) context.get( "plexus.app.booter" ) );
-            // Don't do this env.start();
+            env =
+                new MockNexusEnvironment( new File( TestProperties.getString( "nexus.base.dir" ) ),
+                    TestProperties.getInteger( "nexus.application.port" ) );
 
             Runtime.getRuntime().addShutdownHook( new Thread( new Runnable()
             {
@@ -161,7 +158,7 @@ public abstract class NexusMockTestCase
                 public boolean accept( File pathname )
                 {
                     return ( !pathname.getName().endsWith( ".svn" ) && pathname.isDirectory() && new File( pathname,
-                                                                                                           "pom.xml" ).exists() );
+                        "pom.xml" ).exists() );
                 }
             } );
 
@@ -193,7 +190,7 @@ public abstract class NexusMockTestCase
 
                 Gav gav =
                     new Gav( model.getGroupId(), model.getArtifactId(), model.getVersion(), null, model.getPackaging(),
-                             0, new Date().getTime(), model.getName(), false, null, false, null );
+                        0, new Date().getTime(), model.getName(), false, null, false, null );
 
                 // the Restlet Client does not support multipart forms:
                 // http://restlet.tigris.org/issues/show_bug.cgi?id=71
@@ -218,17 +215,17 @@ public abstract class NexusMockTestCase
                     if ( artifactSha1.exists() )
                     {
                         deployWithWagon( container, "http", deployUrl, artifactSha1,
-                                         GavUtil.getRelitiveArtifactPath( gav ) + ".sha1" );
+                            GavUtil.getRelitiveArtifactPath( gav ) + ".sha1" );
                     }
                     if ( artifactMd5.exists() )
                     {
                         deployWithWagon( container, "http", deployUrl, artifactMd5,
-                                         GavUtil.getRelitiveArtifactPath( gav ) + ".md5" );
+                            GavUtil.getRelitiveArtifactPath( gav ) + ".md5" );
                     }
                     if ( artifactAsc.exists() )
                     {
                         deployWithWagon( container, "http", deployUrl, artifactAsc,
-                                         GavUtil.getRelitiveArtifactPath( gav ) + ".asc" );
+                            GavUtil.getRelitiveArtifactPath( gav ) + ".asc" );
                     }
 
                     deployWithWagon( container, "http", deployUrl, artifactFile, GavUtil.getRelitiveArtifactPath( gav ) );
@@ -267,7 +264,8 @@ public abstract class NexusMockTestCase
         throws ConnectionException, AuthenticationException, TransferFailedException, ResourceDoesNotExistException,
         AuthorizationException, ComponentLookupException
     {
-        new WagonDeployer( container, wagonHint, "admin", "admin123", deployUrl, fileToDeploy, artifactPath ).deploy();
+        new WagonDeployer( container.lookup( Wagon.class, wagonHint ), wagonHint, "admin", "admin123", deployUrl,
+            fileToDeploy, artifactPath, new TestContext() ).deploy();
     }
 
     @BeforeMethod

@@ -1,20 +1,14 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.configuration.application;
 
@@ -30,15 +24,16 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.apache.shiro.subject.Subject;
+import org.apache.shiro.util.ThreadContext;
 import org.codehaus.plexus.component.annotations.Component;
 import org.codehaus.plexus.component.annotations.Requirement;
-import org.codehaus.plexus.logging.Logger;
 import org.codehaus.plexus.util.StringUtils;
 import org.sonatype.configuration.ConfigurationException;
 import org.sonatype.configuration.validation.InvalidConfigurationException;
 import org.sonatype.configuration.validation.ValidationRequest;
 import org.sonatype.configuration.validation.ValidationResponse;
 import org.sonatype.nexus.NexusStreamResponse;
+import org.sonatype.nexus.configuration.Configurable;
 import org.sonatype.nexus.configuration.ConfigurationChangeEvent;
 import org.sonatype.nexus.configuration.ConfigurationCommitEvent;
 import org.sonatype.nexus.configuration.ConfigurationLoadEvent;
@@ -54,6 +49,7 @@ import org.sonatype.nexus.configuration.model.Configuration;
 import org.sonatype.nexus.configuration.source.ApplicationConfigurationSource;
 import org.sonatype.nexus.configuration.validator.ApplicationConfigurationValidator;
 import org.sonatype.nexus.configuration.validator.ApplicationValidationContext;
+import org.sonatype.nexus.logging.AbstractLoggingComponent;
 import org.sonatype.nexus.plugins.RepositoryType;
 import org.sonatype.nexus.proxy.NoSuchRepositoryException;
 import org.sonatype.nexus.proxy.events.VetoFormatter;
@@ -73,6 +69,9 @@ import org.sonatype.nexus.tasks.descriptors.ScheduledTaskDescriptor;
 import org.sonatype.plexus.appevents.ApplicationEventMulticaster;
 import org.sonatype.security.SecuritySystem;
 
+import com.google.common.base.Function;
+import com.google.common.collect.Collections2;
+
 /**
  * The class DefaultNexusConfiguration is responsible for config management. It actually keeps in sync Nexus internal
  * state with p ersisted user configuration. All changes incoming thru its iface is reflect/maintained in Nexus current
@@ -82,11 +81,9 @@ import org.sonatype.security.SecuritySystem;
  */
 @Component( role = NexusConfiguration.class )
 public class DefaultNexusConfiguration
+    extends AbstractLoggingComponent
     implements NexusConfiguration
 {
-    @Requirement
-    private Logger logger;
-
     @Requirement
     private ApplicationEventMulticaster applicationEventMulticaster;
 
@@ -150,12 +147,8 @@ public class DefaultNexusConfiguration
     /** The map with per-repotype limitations */
     private Map<RepositoryTypeDescriptor, Integer> repositoryMaxInstanceCountLimits;
 
-    // ==
-
-    protected Logger getLogger()
-    {
-        return logger;
-    }
+    @Requirement
+    private List<ConfigurationModifier> configurationModifiers;
 
     // ==
 
@@ -165,7 +158,7 @@ public class DefaultNexusConfiguration
         loadConfiguration( false );
     }
 
-    public void loadConfiguration( boolean force )
+    public synchronized void loadConfiguration( boolean force )
         throws ConfigurationException, IOException
     {
         if ( force || configurationSource.getConfiguration() == null )
@@ -173,6 +166,18 @@ public class DefaultNexusConfiguration
             getLogger().info( "Loading Nexus Configuration..." );
 
             configurationSource.loadConfiguration();
+
+            boolean modified = false;
+            for ( ConfigurationModifier modifier : configurationModifiers )
+            {
+                modified |= modifier.apply( configurationSource.getConfiguration() );
+            }
+
+            if ( modified )
+            {
+                configurationSource.backupConfiguration();
+                configurationSource.storeConfiguration();
+            }
 
             configurationDirectory = null;
 
@@ -206,14 +211,80 @@ public class DefaultNexusConfiguration
 
             applyConfiguration();
 
-            // we succesfully loaded config
+            // we successfully loaded config
             applicationEventMulticaster.notifyEventListeners( new ConfigurationLoadEvent( this ) );
         }
     }
 
-    public boolean applyConfiguration()
+    protected String changesToString( final Collection<Configurable> changes )
     {
-        getLogger().info( "Applying Nexus Configuration..." );
+        final StringBuilder sb = new StringBuilder();
+
+        if ( changes != null )
+        {
+            sb.append( Collections2.transform( changes, new Function<Configurable, String>()
+            {
+                @Override
+                public String apply( final Configurable input )
+                {
+                    return input.getName();
+                }
+            } ) );
+        }
+
+        return sb.toString();
+    }
+
+    protected void logApplyConfiguration( final Collection<Configurable> changes )
+    {
+        final String userId = getCurrentUserId();
+
+        if ( changes != null && changes.size() > 0 )
+        {
+            if ( StringUtils.isBlank( userId ) )
+            {
+                // should not really happen, we should always have subject (at least anon), but...
+                getLogger().info( "Applying Nexus Configuration due to changes in {}...", changesToString( changes ) );
+            }
+            else
+            {
+                // usually what happens on config change
+                getLogger().info( "Applying Nexus Configuration due to changes in {} made by {}...",
+                    changesToString( changes ), userId );
+            }
+        }
+        else
+        {
+            if ( StringUtils.isBlank( userId ) )
+            {
+                // usually on boot: no changes since "all" changed, and no subject either
+                getLogger().info( "Applying Nexus Configuration..." );
+            }
+            else
+            {
+                // inperfection of config framework, ie. on adding new component to config system (new repo)
+                getLogger().info( "Applying Nexus Configuration made by {}...", userId );
+            }
+        }
+    }
+
+    protected String getCurrentUserId()
+    {
+        Subject subject = ThreadContext.getSubject(); // Use ThreadContext directly, SecurityUtils will associate a
+                                                      // new Subject with the thread.
+        if ( subject != null && subject.getPrincipal() != null )
+        {
+            return subject.getPrincipal().toString();
+        }
+        else
+        {
+            return null;
+        }
+    }
+
+    public synchronized boolean applyConfiguration()
+    {
+        getLogger().debug( "Applying Nexus Configuration..." );
 
         ConfigurationPrepareForSaveEvent prepare = new ConfigurationPrepareForSaveEvent( this );
 
@@ -221,21 +292,16 @@ public class DefaultNexusConfiguration
 
         if ( !prepare.isVetoed() )
         {
+            logApplyConfiguration( prepare.getChanges() );
+
             configurationDirectory = null;
 
             temporaryDirectory = null;
 
             applicationEventMulticaster.notifyEventListeners( new ConfigurationCommitEvent( this ) );
 
-            String userId = null;
-            Subject subject = securitySystem.getSubject();
-            if ( subject != null && subject.getPrincipal() != null )
-            {
-                userId = subject.getPrincipal().toString();
-            }
-
             applicationEventMulticaster.notifyEventListeners( new ConfigurationChangeEvent( this, prepare.getChanges(),
-                userId ) );
+                getCurrentUserId() ) );
 
             return true;
         }
@@ -268,7 +334,7 @@ public class DefaultNexusConfiguration
 
             configurationSource.storeConfiguration();
 
-            // we succesfully saved config
+            // we successfully saved config
             applicationEventMulticaster.notifyEventListeners( new ConfigurationSaveEvent( this ) );
         }
     }
@@ -294,10 +360,7 @@ public class DefaultNexusConfiguration
 
     public boolean isInstanceUpgraded()
     {
-        // TODO: this is not quite true: we might keep model ver but upgrade JARs of Nexus only in a release
-        // we should store the nexus version somewhere in working storage and trigger some household stuff
-        // if version changes.
-        return configurationSource.isConfigurationUpgraded();
+        return configurationSource.isInstanceUpgraded();
     }
 
     public boolean isConfigurationUpgraded()
@@ -332,7 +395,7 @@ public class DefaultNexusConfiguration
                     + "* Nexus cannot start properly until the process has read+write permissions to this folder *\r\n"
                     + "******************************************************************************";
 
-            getLogger().fatalError( message );
+            getLogger().error( message );
         }
 
         return workingDirectory;
@@ -340,17 +403,27 @@ public class DefaultNexusConfiguration
 
     public File getWorkingDirectory( String key )
     {
+        return getWorkingDirectory( key, true );
+    }
+
+    public File getWorkingDirectory( final String key, final boolean createIfNeeded )
+    {
         File keyedDirectory = new File( getWorkingDirectory(), key );
 
-        if ( !keyedDirectory.isDirectory() && !keyedDirectory.mkdirs() )
+        if ( createIfNeeded )
         {
-            String message =
-                "\r\n******************************************************************************\r\n"
-                    + "* Could not create work directory [ " + keyedDirectory.toString() + "]!!!! *\r\n"
-                    + "* Nexus cannot start properly until the process has read+write permissions to this folder *\r\n"
-                    + "******************************************************************************";
+            if ( !keyedDirectory.isDirectory() && !keyedDirectory.mkdirs() )
+            {
+                String message =
+                    "\r\n******************************************************************************\r\n"
+                        + "* Could not create work directory [ "
+                        + keyedDirectory.toString()
+                        + "]!!!! *\r\n"
+                        + "* Nexus cannot start properly until the process has read+write permissions to this folder *\r\n"
+                        + "******************************************************************************";
 
-            getLogger().fatalError( message );
+                getLogger().error( message );
+            }
         }
 
         return keyedDirectory;
@@ -519,7 +592,7 @@ public class DefaultNexusConfiguration
         }
     }
 
-    protected Repository instantiateRepository( Configuration configuration, CRepository repositoryModel )
+    protected Repository instantiateRepository( final Configuration configuration, final CRepository repositoryModel )
         throws ConfigurationException
     {
         checkRepositoryMaxInstanceCountForCreation( repositoryModel );
@@ -532,6 +605,14 @@ public class DefaultNexusConfiguration
 
         // give it back
         return repository;
+    }
+
+    protected void releaseRepository( final Repository repository, final Configuration configuration,
+                                      final CRepository repositoryModel )
+        throws ConfigurationException
+    {
+        // release it
+        runtimeConfigurationBuilder.releaseRepository( repository, configuration, repositoryModel );
     }
 
     // ------------------------------------------------------------------
@@ -690,7 +771,7 @@ public class DefaultNexusConfiguration
         }
     }
 
-    public Repository createRepository( CRepository settings )
+    public synchronized Repository createRepository( CRepository settings )
         throws ConfigurationException, IOException
     {
         validateRepository( settings, true );
@@ -698,7 +779,7 @@ public class DefaultNexusConfiguration
         // create it, will do runtime validation
         Repository repository = instantiateRepository( getConfigurationModel(), settings );
 
-        // now add it to config, since it is validated and succesfully created
+        // now add it to config, since it is validated and successfully created
         getConfigurationModel().addRepository( settings );
 
         // save
@@ -707,7 +788,7 @@ public class DefaultNexusConfiguration
         return repository;
     }
 
-    public void deleteRepository( String id )
+    public synchronized void deleteRepository( String id )
         throws NoSuchRepositoryException, IOException, ConfigurationException
     {
         Repository repository = repositoryRegistry.getRepository( id );
@@ -768,7 +849,9 @@ public class DefaultNexusConfiguration
             {
                 i.remove();
 
-                applyAndSaveConfiguration();
+                saveConfiguration();
+
+                releaseRepository( repository, getConfigurationModel(), repo );
 
                 return;
             }

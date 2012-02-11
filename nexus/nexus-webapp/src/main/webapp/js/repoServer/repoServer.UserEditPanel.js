@@ -1,20 +1,14 @@
 /*
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 /*
  * User Edit/Create panel layout and controller
@@ -737,6 +731,7 @@ Sonatype.repoServer.DefaultUserEditor = function(config) {
   }
 
   items.push({
+        id : 'useredit-rolemanager',
         xtype : 'rolemanager',
         name : 'roleManager',
         height : 200,
@@ -801,6 +796,11 @@ Ext.extend(Sonatype.repoServer.DefaultUserEditor, Sonatype.ext.FormPanel, {
         rec.set('displayRoles', this.combineRoles(receivedData.roles));
         rec.commit();
         rec.endEdit();
+      },
+      validationModifiers : { 'roles' :
+        function(error,panel) {
+          Ext.getCmp('useredit-rolemanager').markInvalid(error.msg); 
+        }
       }
     });
 
@@ -927,6 +927,7 @@ Sonatype.repoServer.UserMappingEditor = function(config) {
                     allowBlank : false,
                     width : this.COMBO_WIDTH
                   }, {
+                    id : "usermapping-rolemanager",
                     xtype : 'rolemanager',
                     name : 'roleManager',
                     height : 200,
@@ -972,6 +973,7 @@ Ext.extend(Sonatype.repoServer.UserMappingEditor, Sonatype.ext.FormPanel, {
             fpanel : this,
             dataModifiers : this.dataModifiers.submit,
             serviceDataObj : this.referenceData,
+            validationModifiers : this.validationModifiers,
             isNew : this.isNew
               // extra option to send to callback, instead of conditioning on
               // method
@@ -1098,6 +1100,11 @@ Ext.extend(Sonatype.repoServer.UserMappingEditor, Sonatype.ext.FormPanel, {
         else
         {
           return Sonatype.repoServer.UserMappingEditor.superclass.actionFailedHandler.call(this, form, action);
+        }
+      },
+      validationModifiers : { 'roles' :
+        function(error,panel) {
+          Ext.getCmp('usermapping-rolemanager').markInvalid(error.msg); 
         }
       }
     });

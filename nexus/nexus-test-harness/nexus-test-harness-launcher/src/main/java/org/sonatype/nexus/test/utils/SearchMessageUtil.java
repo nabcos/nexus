@@ -1,25 +1,25 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.test.utils;
 
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.sonatype.nexus.test.utils.NexusRequestMatchers.isSuccess;
+import static org.sonatype.nexus.test.utils.NexusRequestMatchers.isSuccessful;
+
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -27,6 +27,8 @@ import java.util.Map.Entry;
 import org.apache.maven.index.SearchType;
 import org.apache.maven.index.artifact.Gav;
 import org.codehaus.plexus.util.StringUtils;
+import org.hamcrest.CoreMatchers;
+import org.hamcrest.Matcher;
 import org.restlet.data.MediaType;
 import org.restlet.data.Method;
 import org.restlet.data.Reference;
@@ -47,8 +49,6 @@ import org.sonatype.nexus.rest.model.ScheduledServiceBaseResource;
 import org.sonatype.nexus.rest.model.ScheduledServicePropertyResource;
 import org.sonatype.nexus.rest.model.SearchNGResponse;
 import org.sonatype.nexus.rest.model.SearchResponse;
-import org.sonatype.nexus.tasks.descriptors.RepairIndexTaskDescriptor;
-import org.sonatype.nexus.tasks.descriptors.UpdateIndexTaskDescriptor;
 import org.sonatype.plexus.rest.representation.XStreamRepresentation;
 import org.testng.Assert;
 
@@ -77,7 +77,8 @@ public class SearchMessageUtil
      * @return
      * @throws Exception
      */
-    private Response doSearchForR( Map<String, String> queryArgs, String repositoryId, SearchType searchType )
+    private String doSearchForR( Map<String, String> queryArgs, String repositoryId, SearchType searchType,
+                                 Matcher<Response>... matchers )
         throws IOException
     {
         StringBuffer serviceURI = null;
@@ -115,7 +116,11 @@ public class SearchMessageUtil
 
         log.info( "Search serviceURI " + serviceURI );
 
-        return RequestFacade.doGetRequest( serviceURI.toString() );
+        List<Matcher<? super Response>> list = new LinkedList<Matcher<? super Response>>();
+        list.add( NexusRequestMatchers.isSuccessful() );
+        list.addAll( Arrays.asList( matchers ) );
+
+        return RequestFacade.doGetForText( serviceURI.toString(), CoreMatchers.allOf( list ) );
     }
 
     /**
@@ -123,60 +128,43 @@ public class SearchMessageUtil
      * 
      * @param queryArgs
      * @param repositoryId
+     * @param matchers
      * @param asKeywords
      * @return
      * @throws IOException
      */
-    private List<NexusArtifact> doSearchFor( Map<String, String> queryArgs, String repositoryId, SearchType searchType )
+    private List<NexusArtifact> doSearchFor( Map<String, String> queryArgs, String repositoryId, SearchType searchType,
+                                             Matcher<Response>... matchers )
         throws IOException
     {
-        Response response = doSearchForR( queryArgs, repositoryId, searchType );
-
-        String responseText = response.getEntity().getText();
-
-        Assert.assertTrue( response.getStatus().isSuccess(), "Search failure:\n" + responseText );
+        String entityText = doSearchForR( queryArgs, repositoryId, searchType, matchers );
 
         XStreamRepresentation representation =
-            new XStreamRepresentation( xstream, responseText, MediaType.APPLICATION_XML );
+            new XStreamRepresentation( xstream, entityText, MediaType.APPLICATION_XML );
 
-        SearchResponse searchResponde = (SearchResponse) representation.getPayload( new SearchResponse() );
-
-        return searchResponde.getData();
+        return ( (SearchResponse) representation.getPayload( new SearchResponse() ) ).getData();
     }
 
     // LOW LEVEL METHODS
 
-    public List<NexusArtifact> searchFor( Map<String, String> queryArgs )
+    public List<NexusArtifact> searchFor( Map<String, String> queryArgs, Matcher<Response>... matchers )
         throws IOException
     {
-        return searchFor( queryArgs, null, null );
+        return searchFor( queryArgs, null, null, matchers );
     }
 
-    public List<NexusArtifact> searchFor( Map<String, String> queryArgs, String repositoryId )
+    public List<NexusArtifact> searchFor( Map<String, String> queryArgs, String repositoryId,
+                                          Matcher<Response>... matchers )
         throws IOException
     {
-        return searchFor( queryArgs, repositoryId, null );
+        return searchFor( queryArgs, repositoryId, null, matchers );
     }
 
-    public List<NexusArtifact> searchFor( Map<String, String> queryArgs, String repositoryId, SearchType searchType )
+    public List<NexusArtifact> searchFor( Map<String, String> queryArgs, String repositoryId, SearchType searchType,
+                                          Matcher<Response>... matchers )
         throws IOException
     {
-        return doSearchFor( queryArgs, repositoryId, searchType );
-    }
-
-    // QUICK ("simple" query)
-
-    /**
-     * Returns "low" Restlet response to access response HTTP Code.
-     */
-    public Response searchFor_response( String query )
-        throws IOException
-    {
-        HashMap<String, String> queryArgs = new HashMap<String, String>();
-
-        queryArgs.put( "q", query );
-
-        return doSearchForR( queryArgs, null, null );
+        return doSearchFor( queryArgs, repositoryId, searchType, matchers );
     }
 
     public List<NexusArtifact> searchFor( String query )
@@ -282,19 +270,20 @@ public class SearchMessageUtil
     {
         // GET /identify/sha1/8b1b85d04eea979c33109ea42808b7d3f6d355ab (is log4j:log4j:1.2.13)
 
-        Response response = RequestFacade.doGetRequest( "service/local/identify/sha1/" + sha1 );
-
-        if ( response.getStatus().isSuccess() )
+        try
         {
+            String responseText = RequestFacade.doGetForText( "service/local/identify/sha1/" + sha1 );
             XStreamRepresentation representation =
-                new XStreamRepresentation( xstream, response.getEntity().getText(), MediaType.APPLICATION_XML );
+                new XStreamRepresentation( xstream, responseText, MediaType.APPLICATION_XML );
 
             return (NexusArtifact) representation.getPayload( new NexusArtifact() );
         }
-        else
+        catch ( AssertionError e )
         {
+            // unsuccesful GET
             return null;
         }
+
     }
 
     // SWITCHES ALLOW*
@@ -342,16 +331,8 @@ public class SearchMessageUtil
         throws IOException
     {
         String serviceURI = "service/local/repositories/" + repositoryName;
-        final Response response = RequestFacade.doGetRequest( serviceURI );
-
-        if ( response.getStatus().isError() )
-        {
-            Assert.assertFalse( response.getStatus().isError(), "Unable do retrieve repository: " + repositoryName
-                + "\n" + response.getStatus() );
-        }
-        String responseText = response.getEntity().getText();
-
-        RepositoryResourceResponse repository = (RepositoryResourceResponse) xstream.fromXML( responseText );
+        String entityText = RequestFacade.doGetForText( serviceURI );
+        RepositoryResourceResponse repository = (RepositoryResourceResponse) xstream.fromXML( entityText );
         return (RepositoryResource) repository.getData();
     }
 
@@ -365,8 +346,7 @@ public class SearchMessageUtil
         repositoryResponse.setData( repository );
         representation.setPayload( repositoryResponse );
 
-        Status status = RequestFacade.sendMessage( serviceURI, Method.PUT, representation ).getStatus();
-        Assert.assertEquals( Status.SUCCESS_OK.getCode(), status.getCode() );
+        RequestFacade.doPutForStatus( serviceURI, representation, isSuccessful() );
 
     }
 
@@ -391,19 +371,21 @@ public class SearchMessageUtil
         scheduledTask.setName( taskName );
         if ( force )
         {
-            scheduledTask.setTypeId( RepairIndexTaskDescriptor.ID );
+            // TODO: these are constants, but it's expensive to reference whole nexus core just to get these
+            scheduledTask.setTypeId( "RepairIndexTask" );
         }
         else
         {
-            scheduledTask.setTypeId( UpdateIndexTaskDescriptor.ID );
+            // TODO: these are constants, but it's expensive to reference whole nexus core just to get these
+            scheduledTask.setTypeId( "UpdateIndexTask" );
         }
         scheduledTask.setSchedule( "manual" );
 
         if ( repoId != null )
         {
             ScheduledServicePropertyResource prop = new ScheduledServicePropertyResource();
-            prop.setKey( UpdateIndexTaskDescriptor.REPO_OR_GROUP_FIELD_ID );
-                prop.setValue(  repoId );
+            prop.setKey( "repositoryId" );
+            prop.setValue( repoId );
             scheduledTask.addProperty( prop );
         }
 
@@ -417,18 +399,23 @@ public class SearchMessageUtil
     public ArtifactInfoResource getInfo( String repositoryId, String itemPath )
         throws IOException
     {
-        Response res =
-            RequestFacade.sendMessage( "content/repositories/" + repositoryId + "/" + itemPath + "?describe=info",
-                Method.GET, new XStreamRepresentation( xstream, "", MediaType.APPLICATION_XML ) );
-
-        String responseText = res.getEntity().getText();
-        if ( !res.getStatus().isSuccess() )
+        Response response = null;
+        String entityText;
+        try
         {
-            Assert.fail( res.getStatus() + "\n" + responseText );
+            response =
+                RequestFacade.sendMessage( "content/repositories/" + repositoryId + "/" + itemPath + "?describe=info",
+                    Method.GET, new XStreamRepresentation( xstream, "", MediaType.APPLICATION_XML ) );
+            entityText = response.getEntity().getText();
+            assertThat( response, isSuccessful() );
+        }
+        finally
+        {
+            RequestFacade.releaseResponse( response );
         }
 
         XStreamRepresentation rep =
-            new XStreamRepresentation( XStreamFactory.getXmlXStream(), responseText, MediaType.APPLICATION_XML );
+            new XStreamRepresentation( XStreamFactory.getXmlXStream(), entityText, MediaType.APPLICATION_XML );
         ArtifactInfoResourceResponse info =
             (ArtifactInfoResourceResponse) rep.getPayload( new ArtifactInfoResourceResponse() );
 
@@ -447,7 +434,7 @@ public class SearchMessageUtil
      * @return
      * @throws Exception
      */
-    private Response doNGSearchForR( Map<String, String> queryArgs, String repositoryId, SearchType searchType )
+    private String doNGSearchForR( Map<String, String> queryArgs, String repositoryId, SearchType searchType )
         throws IOException
     {
         StringBuffer serviceURI = new StringBuffer( "service/local/lucene/search?" );
@@ -480,7 +467,7 @@ public class SearchMessageUtil
 
         log.info( "Search serviceURI " + serviceURI );
 
-        return RequestFacade.doGetRequest( serviceURI.toString() );
+        return RequestFacade.doGetForText( serviceURI.toString() );
     }
 
     /**
@@ -495,14 +482,10 @@ public class SearchMessageUtil
     private SearchNGResponse doNGSearchFor( Map<String, String> queryArgs, String repositoryId, SearchType searchType )
         throws IOException
     {
-        Response response = doNGSearchForR( queryArgs, repositoryId, searchType );
-
-        String responseText = response.getEntity().getText();
-
-        Assert.assertTrue( response.getStatus().isSuccess(), "Search failure:\n" + responseText );
+        String entityText = doNGSearchForR( queryArgs, repositoryId, searchType );
 
         XStreamRepresentation representation =
-            new XStreamRepresentation( xstream, responseText, MediaType.APPLICATION_XML );
+            new XStreamRepresentation( xstream, entityText, MediaType.APPLICATION_XML );
 
         SearchNGResponse searchResponse = (SearchNGResponse) representation.getPayload( new SearchNGResponse() );
 
@@ -648,16 +631,10 @@ public class SearchMessageUtil
             serviceURI = serviceURI + "versionHint=" + versionIdHint + "&";
         }
 
-        Response response = RequestFacade.doGetRequest( serviceURI );
-
-        String responseText = response.getEntity().getText();
-
-        Status status = response.getStatus();
-
-        Assert.assertTrue( status.isSuccess(), responseText + status );
+        String entityText = RequestFacade.doGetForText( serviceURI );
 
         XStreamRepresentation re =
-            new XStreamRepresentation( XStreamFactory.getXmlXStream(), responseText, MediaType.APPLICATION_XML );
+            new XStreamRepresentation( XStreamFactory.getXmlXStream(), entityText, MediaType.APPLICATION_XML );
 
         IndexBrowserTreeViewResponseDTO resourceResponse =
             (IndexBrowserTreeViewResponseDTO) re.getPayload( new IndexBrowserTreeViewResponseDTO() );
@@ -665,4 +642,40 @@ public class SearchMessageUtil
         return resourceResponse;
     }
 
+    /**
+     * Reindex a given path.
+     */
+    public void reindexPath( String repo, String path )
+        throws IOException, Exception
+    {
+        String serviceURI = "service/local/data_incremental_index/repositories/" + repo + "/content/" + path;
+        Status status = RequestFacade.doDeleteForStatus( serviceURI, null );
+        assertThat( "Fail to update " + repo + " repository index " + status, status, isSuccess() );
+
+        // let s w8 a few time for indexes
+        TaskScheduleUtil.waitForAllTasksToStop();
+        // be safe and wait for async events as well
+        new EventInspectorsUtil( RequestFacade.getNexusRestClient() ).waitForCalmPeriod();
+    }
+
+    /**
+     * Reindex a given GAV.
+     */
+    public void reindexGAV( String repo, Gav gav )
+        throws IOException, Exception
+    {
+        String path = gav.getGroupId().replace( '.', '/' ) + "/" + gav.getArtifactId() + "/" + gav.getVersion() + "/";
+        reindexPath( repo, path );
+    }
+
+    /**
+     * Reindex a given GA. <BR>
+     * Notice this won't include version
+     */
+    public void reindexGA( String repo, Gav ga )
+        throws IOException, Exception
+    {
+        String path = ga.getGroupId().replace( '.', '/' ) + "/" + ga.getArtifactId() + "/";
+        reindexPath( repo, path );
+    }
 }

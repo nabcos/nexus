@@ -1,32 +1,28 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.integrationtests.nexus1806;
 
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.sonatype.nexus.test.utils.EmailUtil.USER_EMAIL;
 import static org.sonatype.nexus.test.utils.EmailUtil.USER_PASSWORD;
 import static org.sonatype.nexus.test.utils.EmailUtil.USER_USERNAME;
+import static org.sonatype.nexus.test.utils.NexusRequestMatchers.hasStatusCode;
+import static org.sonatype.nexus.test.utils.NexusRequestMatchers.isSuccess;
 
 import java.io.IOException;
 
 import javax.mail.internet.MimeMessage;
 
-import org.restlet.data.Response;
 import org.restlet.data.Status;
 import org.sonatype.nexus.integrationtests.AbstractNexusIntegrationTest;
 import org.sonatype.nexus.rest.model.SmtpSettingsResource;
@@ -46,14 +42,14 @@ public class Nexus1806ValidateSmtpConfigurationIT
     extends AbstractNexusIntegrationTest
 {
 
-    private static GreenMail changedServer;
+    private GreenMail changedServer;
 
-    private static int port;
+    private int port;
 
-    private static GreenMail originalServer;
+    private GreenMail originalServer;
 
     @BeforeClass
-    public static void init()
+    public void init()
     {
         port = TestProperties.getInteger( "webproxy-server-port" );
         // it is necessary to change port to make sure it worked
@@ -92,11 +88,8 @@ public class Nexus1806ValidateSmtpConfigurationIT
         smtpSettings.setPassword( EmailUtil.USER_PASSWORD );
         smtpSettings.setSystemEmailAddress( EmailUtil.USER_EMAIL );
         smtpSettings.setTestEmail( "test_user@sonatype.org" );
-        Response response = SettingsMessageUtil.validateSmtpResponse( smtpSettings );
-
-        String text = response.getEntity().getText();
-        Status status = response.getStatus();
-        Assert.assertEquals( status.getCode(), 400, "Unable to validate e-mail " + status + "\n" + text );
+        Status status = SettingsMessageUtil.save( smtpSettings );
+        assertThat( status, hasStatusCode( 400 ) );
     }
 
     @Test
@@ -121,8 +114,8 @@ public class Nexus1806ValidateSmtpConfigurationIT
         smtpSettings.setPassword( USER_PASSWORD );
         smtpSettings.setSystemEmailAddress( email );
         smtpSettings.setTestEmail( "test_user@sonatype.org" );
-        Status status = SettingsMessageUtil.validateSmtp( smtpSettings );
-        Assert.assertEquals( status.getCode(), 400, "Unable to validate e-mail " + status );
+        Status status = SettingsMessageUtil.save( smtpSettings );
+        assertThat( status, hasStatusCode( 400 ) );
     }
 
     private void run( int port, GreenMail server )
@@ -135,9 +128,9 @@ public class Nexus1806ValidateSmtpConfigurationIT
         smtpSettings.setPassword( EmailUtil.USER_PASSWORD );
         smtpSettings.setSystemEmailAddress( EmailUtil.USER_EMAIL );
         smtpSettings.setTestEmail( "test_user@sonatype.org" );
-        Response res = SettingsMessageUtil.validateSmtpResponse( smtpSettings );
-        Assert.assertTrue( res.getStatus().isSuccess(), "Unable to validate e-mail " + res.getStatus() + "\n"
-            + res.getEntity().getText() );
+
+        Status status = SettingsMessageUtil.save( smtpSettings );
+        assertThat( status, isSuccess() );
 
         server.waitForIncomingEmail( 5000, 1 );
 
@@ -151,10 +144,20 @@ public class Nexus1806ValidateSmtpConfigurationIT
         Assert.assertFalse( body.trim().length() == 0, "Got empty message" );
     }
 
-    @AfterClass
-    public static void stop()
+    @AfterClass( alwaysRun = true )
+    public void stop()
     {
-        EmailUtil.stopEmailServer();
-        changedServer.stop();
+        if ( originalServer != null )
+        {
+            originalServer.stop();
+            
+            originalServer = null;
+        }
+        if ( changedServer != null )
+        {
+            changedServer.stop();
+            
+            changedServer = null;
+        }
     }
 }

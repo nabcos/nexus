@@ -1,20 +1,14 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.rest.repositories;
 
@@ -43,9 +37,6 @@ import org.sonatype.nexus.proxy.maven.ChecksumPolicy;
 import org.sonatype.nexus.proxy.maven.MavenProxyRepository;
 import org.sonatype.nexus.proxy.maven.MavenRepository;
 import org.sonatype.nexus.proxy.maven.RepositoryPolicy;
-import org.sonatype.nexus.proxy.registry.ContentClass;
-import org.sonatype.nexus.proxy.registry.RepositoryTypeRegistry;
-import org.sonatype.nexus.proxy.repository.AbstractProxyRepository;
 import org.sonatype.nexus.proxy.repository.GroupRepository;
 import org.sonatype.nexus.proxy.repository.HostedRepository;
 import org.sonatype.nexus.proxy.repository.ProxyRepository;
@@ -55,6 +46,7 @@ import org.sonatype.nexus.proxy.repository.ShadowRepository;
 import org.sonatype.nexus.rest.AbstractNexusPlexusResource;
 import org.sonatype.nexus.rest.NexusCompat;
 import org.sonatype.nexus.rest.NoSuchRepositoryAccessException;
+import org.sonatype.nexus.rest.RepositoryURLBuilder;
 import org.sonatype.nexus.rest.global.AbstractGlobalConfigurationPlexusResource;
 import org.sonatype.nexus.rest.model.AuthenticationSettings;
 import org.sonatype.nexus.rest.model.RemoteConnectionSettings;
@@ -74,21 +66,6 @@ public abstract class AbstractRepositoryPlexusResource
     /** Key to store Repo with which we work against. */
     public static final String REPOSITORY_ID_KEY = "repositoryId";
 
-    /** Repo type hosted. */
-    public static final String REPO_TYPE_HOSTED = "hosted";
-
-    /** Repo type proxied. */
-    public static final String REPO_TYPE_PROXIED = "proxy";
-
-    /** Repo type virtual (shadow in nexus). */
-    public static final String REPO_TYPE_VIRTUAL = "virtual";
-
-    /** Repo type group. */
-    public static final String REPO_TYPE_GROUP = "group";
-
-    @Requirement
-    private RepositoryTypeRegistry repositoryTypeRegistry;
-
     @Requirement
     private AuthenticationInfoConverter authenticationInfoConverter;
 
@@ -100,6 +77,9 @@ public abstract class AbstractRepositoryPlexusResource
 
     @Requirement
     private ApplicationConfiguration applicationConfiguration;
+    
+    @Requirement(hint="RestletRepositoryUrlBuilder")
+    private RepositoryURLBuilder repositoryURLBuilder;
 
     protected AuthenticationInfoConverter getAuthenticationInfoConverter()
     {
@@ -157,19 +137,19 @@ public abstract class AbstractRepositoryPlexusResource
     {
         if ( repository.getRepositoryKind().isFacetAvailable( ProxyRepository.class ) )
         {
-            return REPO_TYPE_PROXIED;
+            return RepositoryBaseResourceConverter.REPO_TYPE_PROXIED;
         }
         else if ( repository.getRepositoryKind().isFacetAvailable( HostedRepository.class ) )
         {
-            return REPO_TYPE_HOSTED;
+            return RepositoryBaseResourceConverter.REPO_TYPE_HOSTED;
         }
         else if ( repository.getRepositoryKind().isFacetAvailable( ShadowRepository.class ) )
         {
-            return REPO_TYPE_VIRTUAL;
+            return RepositoryBaseResourceConverter.REPO_TYPE_VIRTUAL;
         }
         else if ( repository.getRepositoryKind().isFacetAvailable( GroupRepository.class ) )
         {
-            return REPO_TYPE_GROUP;
+            return RepositoryBaseResourceConverter.REPO_TYPE_GROUP;
         }
         else
         {
@@ -205,8 +185,7 @@ public abstract class AbstractRepositoryPlexusResource
 
                 repoRes.setResourceURI( createRepositoryReference( request, repository.getId() ).toString() );
 
-                repoRes.setContentResourceURI( createRepositoryContentReference( request, repository.getId() )
-                    .toString() );
+                repoRes.setContentResourceURI( repositoryURLBuilder.getExposedRepositoryContentUrl( repository) );
 
                 repoRes.setRepoType( getRestRepoType( repository ) );
 
@@ -301,7 +280,7 @@ public abstract class AbstractRepositoryPlexusResource
             resource = new RepositoryResource();
         }
 
-        resource.setContentResourceURI( createRepositoryContentReference( request, repository.getId() ).toString() );
+        resource.setContentResourceURI( repositoryURLBuilder.getExposedRepositoryContentUrl( repository) );
 
         resource.setProvider( NexusCompat.getRepositoryProviderHint( repository ) );
 
@@ -440,15 +419,15 @@ public abstract class AbstractRepositoryPlexusResource
 
         resource.setName( shadow.getName() );
 
-        resource.setContentResourceURI( createRepositoryContentReference( request, shadow.getId() ).toString() );
+        resource.setContentResourceURI( repositoryURLBuilder.getExposedRepositoryContentUrl( shadow) );
 
         resource.setProvider( NexusCompat.getRepositoryProviderHint( shadow ) );
 
-        resource.setRepoType( REPO_TYPE_VIRTUAL );
+        resource.setRepoType( RepositoryBaseResourceConverter.REPO_TYPE_VIRTUAL );
 
         resource.setFormat( shadow.getRepositoryContentClass().getId() );
 
-        resource.setShadowOf( shadow.getMasterRepositoryId() );
+        resource.setShadowOf( shadow.getMasterRepository().getId() );
 
         resource.setSyncAtStartup( shadow.isSynchronizeAtStartup() );
 

@@ -1,20 +1,14 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.proxy.maven;
 
@@ -22,25 +16,29 @@ import java.io.IOException;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.List;
+import java.util.Locale;
+import java.util.TimeZone;
 
 import org.apache.maven.artifact.repository.metadata.Metadata;
 import org.apache.maven.artifact.repository.metadata.Snapshot;
+import org.apache.maven.artifact.repository.metadata.SnapshotVersion;
 import org.apache.maven.artifact.repository.metadata.Versioning;
-import org.apache.maven.index.artifact.Gav;
-import org.apache.maven.index.artifact.VersionUtils;
 import org.codehaus.plexus.component.annotations.Component;
 import org.codehaus.plexus.component.annotations.Requirement;
-import org.codehaus.plexus.logging.AbstractLogEnabled;
 import org.codehaus.plexus.util.StringUtils;
+import org.sonatype.nexus.logging.AbstractLoggingComponent;
+import org.sonatype.nexus.proxy.maven.gav.Gav;
+import org.sonatype.nexus.proxy.maven.metadata.operations.ModelVersionUtility;
 
 /**
  * Component responsible for metadata maintenance.
  * 
  * @author cstamas
+ * @todo add some unit tests
  */
 @Component( role = MetadataManager.class )
 public class DefaultMetadataManager
-    extends AbstractLogEnabled
+    extends AbstractLoggingComponent
     implements MetadataManager
 {
     static final String LATEST_VERSION = "LATEST";
@@ -123,47 +121,58 @@ public class DefaultMetadataManager
     {
         MavenRepository repository = gavRequest.getMavenRepository();
 
-        if ( RepositoryPolicy.SNAPSHOT.equals( repository.getRepositoryPolicy() ) )
+        Metadata gaMd =
+            metadataLocator.retrieveGAMetadata( new ArtifactStoreRequest( gavRequest.getMavenRepository(), gav,
+                gavRequest.isRequestLocalOnly(), gavRequest.isRequestRemoteOnly() ) );
+
+        if ( gaMd.getVersioning() == null )
         {
-            Metadata gaMd =
-                metadataLocator.retrieveGAMetadata( new ArtifactStoreRequest( gavRequest.getMavenRepository(), gav,
-                    gavRequest.isRequestLocalOnly(), gavRequest.isRequestRemoteOnly() ) );
+            gaMd.setVersioning( new Versioning() );
+        }
 
-            if ( gaMd.getVersioning() == null )
+        String latest = gaMd.getVersioning().getLatest();
+
+        if ( StringUtils.isEmpty( latest ) && gaMd.getVersioning().getVersions() != null )
+        {
+            List<String> versions = gaMd.getVersioning().getVersions();
+
+            // iterate over versions for the end, and grab the first snap found
+            for ( int i = versions.size() - 1; i >= 0; i-- )
             {
-                gaMd.setVersioning( new Versioning() );
-            }
-
-            String latest = gaMd.getVersioning().getLatest();
-
-            if ( StringUtils.isEmpty( latest ) && gaMd.getVersioning().getVersions() != null )
-            {
-                List<String> versions = gaMd.getVersioning().getVersions();
-
-                // iterate over versions for the end, and grab the first snap found
-                for ( int i = versions.size() - 1; i >= 0; i-- )
+                if ( RepositoryPolicy.RELEASE.equals( repository.getRepositoryPolicy() ) )
                 {
-                    if ( VersionUtils.isSnapshot( versions.get( i ) ) )
+                    if ( !Gav.isSnapshot( versions.get( i ) ) )
                     {
                         latest = versions.get( i );
 
                         break;
                     }
                 }
-            }
+                else if ( RepositoryPolicy.SNAPSHOT.equals( repository.getRepositoryPolicy() ) )
+                {
+                    if ( Gav.isSnapshot( versions.get( i ) ) )
+                    {
+                        latest = versions.get( i );
 
-            if ( !StringUtils.isEmpty( latest ) )
-            {
-                return latest;
+                        break;
+                    }
+                }
+                else
+                {
+                    latest = versions.get( i );
+
+                    break;
+                }
             }
-            else
-            {
-                return gavRequest.getVersion();
-            }
+        }
+
+        if ( !StringUtils.isEmpty( latest ) )
+        {
+            return latest;
         }
         else
         {
-            return resolveRelease( gavRequest, gav );
+            return gavRequest.getVersion();
         }
     }
 
@@ -209,7 +218,7 @@ public class DefaultMetadataManager
             // iterate over versions for the end, and grab the first snap found
             for ( int i = versions.size() - 1; i >= 0; i-- )
             {
-                if ( !VersionUtils.isSnapshot( versions.get( i ) ) )
+                if ( !Gav.isSnapshot( versions.get( i ) ) )
                 {
                     release = versions.get( i );
 
@@ -260,6 +269,19 @@ public class DefaultMetadataManager
             gavMd.setVersioning( new Versioning() );
         }
 
+        if ( ModelVersionUtility.Version.V110.compareTo( ModelVersionUtility.getModelVersion( gavMd ) ) <= 0 )
+        {
+            return resolveSnapshotFromM3Metadata( gavRequest, gav, gavMd );
+        }
+        else
+        {
+            return resolveSnapshotFromM2Metadata( gavRequest, gav, gavMd );
+        }
+    }
+
+    public Gav resolveSnapshotFromM2Metadata( final ArtifactStoreRequest gavRequest, final Gav gav, final Metadata gavMd )
+        throws IOException
+    {
         String latest = null;
 
         Long buildTs = null;
@@ -268,18 +290,20 @@ public class DefaultMetadataManager
 
         Snapshot current = gavMd.getVersioning().getSnapshot();
 
-        if ( current != null )
+        // NEXUS-4284: we have non null current, with no timestamp field in the wild out there
+        // so current != null is not enough
+        if ( current != null && StringUtils.isNotBlank( current.getTimestamp() ) && ( current.getBuildNumber() > 0 ) )
         {
             latest = gav.getBaseVersion();
 
             latest = latest.replace( SNAPSHOT_VERSION, current.getTimestamp() + "-" + current.getBuildNumber() );
 
-            buildTs = getTimestampForMdTsString( current.getTimestamp() );
+            buildTs = getTimeFromMetadataTimestampMaven2( current.getTimestamp() );
 
             buildNo = current.getBuildNumber();
         }
 
-        if ( !StringUtils.isEmpty( latest ) && VersionUtils.isSnapshot( latest ) )
+        if ( !StringUtils.isEmpty( latest ) && Gav.isSnapshot( latest ) )
         {
             if ( getLogger().isDebugEnabled() )
             {
@@ -299,14 +323,83 @@ public class DefaultMetadataManager
         }
     }
 
-    public static Long getTimestampForMdTsString( final String tsString )
+    public Gav resolveSnapshotFromM3Metadata( final ArtifactStoreRequest gavRequest, final Gav gav, final Metadata gavMd )
+        throws IOException
+    {
+        for ( SnapshotVersion sv : gavMd.getVersioning().getSnapshotVersions() )
+        {
+            if ( StringUtils.equals( sv.getExtension(), gav.getExtension() )
+                && StringUtils.equals( StringUtils.defaultString( sv.getClassifier(), "" ),
+                    StringUtils.defaultString( gav.getClassifier(), "" ) ) )
+            {
+                Long buildTs = getTimeFromMetadataTimestampMaven3Updated( sv.getUpdated() );
+
+                Integer buildNo = getBuildNumberForMetadataMaven3Value( sv.getVersion() );
+
+                return new Gav( gav.getGroupId(), gav.getArtifactId(), sv.getVersion(), gav.getClassifier(),
+                    gav.getExtension(), buildNo, buildTs, gav.getName(), gav.isHash(), gav.getHashType(),
+                    gav.isSignature(), gav.getSignatureType() );
+
+            }
+        }
+
+        // even if model version is 1.1.0, we have no snapshots versions?
+        return resolveSnapshotFromM2Metadata( gavRequest, gav, gavMd );
+    }
+
+    private static final String METADATA_TIMESTAMP_FORMAT_MAVEN2 = "yyyyMMdd.HHmmss";
+
+    private static final String METADATA_TIMESTAMP_FORMAT_MAVEN3_UPDATED = "yyyyMMddHHmmss";
+
+    /**
+     * Convert a metadata timestamp in the specified format to its time since epoch millis equiv in the UTC timezone
+     * 
+     * @param the SimpleDateFormat format the parse the string with.
+     * @param tsString a metadata timestamp string
+     * @return the long millis
+     * @throws NullPointerException if arguments are null
+     * @throws IllegalArgumentException if dateFormat is invalid
+     */
+    private static Long getTimeFromMetadataTimestamp( final String dateFormat, final String tsString )
     {
         try
         {
-            SimpleDateFormat df = new SimpleDateFormat( "yyyyMMdd.HHmmss" );
+            SimpleDateFormat df = new SimpleDateFormat( dateFormat, Locale.US );
+            df.setTimeZone( TimeZone.getTimeZone( "GMT-00:00" ) );
             return Long.valueOf( df.parse( tsString ).getTime() );
         }
         catch ( ParseException e )
+        {
+            return null;
+        }
+    }
+
+    protected static Long getTimeFromMetadataTimestampMaven3Updated( final String tsString )
+    {
+        return getTimeFromMetadataTimestamp( METADATA_TIMESTAMP_FORMAT_MAVEN3_UPDATED, tsString );
+    }
+
+    protected static Long getTimeFromMetadataTimestampMaven2( final String tsString )
+    {
+        return getTimeFromMetadataTimestamp( METADATA_TIMESTAMP_FORMAT_MAVEN2, tsString );
+    }
+
+    protected static Integer getBuildNumberForMetadataMaven3Value( final String valueString )
+    {
+        try
+        {
+            final int lastIdx = valueString.lastIndexOf( '-' );
+
+            if ( lastIdx > -1 )
+            {
+                return Integer.valueOf( valueString.substring( lastIdx + 1 ) );
+            }
+            else
+            {
+                return 0;
+            }
+        }
+        catch ( NumberFormatException e )
         {
             return null;
         }

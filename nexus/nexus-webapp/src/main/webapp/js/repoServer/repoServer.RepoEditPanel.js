@@ -1,20 +1,14 @@
 /*
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 /*
  * Repository Edit/Create panel layout and controller
@@ -36,9 +30,15 @@ Sonatype.repoServer.AbstractRepositoryEditor = function(config) {
           submit : {
             fn : this.submitHandler,
             scope : this
+          },
+          load : {
+              fn : this.loadHandler,
+              scope : this
           }
         }
       });
+
+  this.on('show', this.showHandler, this);
 };
 
 Ext.extend(Sonatype.repoServer.AbstractRepositoryEditor, Sonatype.ext.FormPanel, {
@@ -70,15 +70,75 @@ Ext.extend(Sonatype.repoServer.AbstractRepositoryEditor, Sonatype.ext.FormPanel,
         }
       },
 
+      /* For plugin contributions:
+
+      contributions added here are valid for hosted and proxy repository editors.
+
+      When a form is build or it's values reset (e.g. load/select provider),
+      contributions are selected according to their conditions:
+      the condition objects's properties will be checked for equality with
+      properties from the data set.
+        e.g. var condition = { provider: 'maven2' }
+      If all keys match,  the 'enter' method will be called with the form data and the form itself.
+
+      The 'leave' method is called only when the provider selection changed (for new repositories).
+      The data given is already changed and does not resemble the data used to select contributions.
+      This method will only be called if the contribution's 'enter' method was called before.
+
+       */
+      contributions : {
+        add : function(condition, enter, leave) {
+          this.list.push(
+            {
+              condition: condition,
+              enter: enter,
+              leave: leave
+            }
+          )
+        },
+        list : new Array(),
+        lastPlugins : new Array()
+      },
+
+      contribute : function( data, action)
+      {
+          if ( action === 'leave' && this.contributions.lastPlugins.length != 0 )
+          {
+              for ( i = 0; i < this.contributions.lastPlugins.length; i++ )
+              {
+                  contrib = this.contributions.lastPlugins[i];
+                  contrib.leave( data, this.form );
+              }
+              this.contributions.lastPlugins = new Array();
+          } else {
+              plugins:
+              for ( i = 0; i < this.contributions.list.length; i++ )
+              {
+                  contrib = this.contributions.list[i];
+                  for ( key in contrib.condition )
+                  {
+                      if ( contrib.condition.hasOwnProperty( key ) && data[key] !== contrib.condition[key] )
+                      {
+                          continue plugins;
+                      }
+                  }
+                  this.contributions.lastPlugins.push(contrib);
+                  contrib[action]( data, this.form );
+              }
+          }
+      },
+
       providerSelectHandler : function(combo, rec, index) {
-        this.form.findField('format').setValue(rec.data.format);
-        this.form.findField('providerRole').setValue(rec.data.providerRole);
-        this.afterProviderSelectHandler(combo, rec, index);
+          this.form.findField( 'format' ).setValue( rec.data.format );
+          this.form.findField( 'providerRole' ).setValue( rec.data.providerRole );
+          this.afterProviderSelectHandler( combo, rec, index );
+
+          // let plugins change UI
+          this.contribute( rec.data, 'enter' )
       },
 
       templateLoadSuccess : function(form, action) {},
 
-      afterProviderSelectHandler : function(combo, rec, index) {},
 
       repoPolicySelectHandler : function(combo, rec, index) {
         var repoPolicy = rec.data.value.toLowerCase();
@@ -217,8 +277,64 @@ Ext.extend(Sonatype.repoServer.AbstractRepositoryEditor, Sonatype.ext.FormPanel,
         }
 
         store.insert(insertIndex, [rec]);
-      }
+      },
+      isMavenFormat : function(format) {
+        return format.indexOf('maven') == 0;
+      },
+      updateRepoPolicyField : function(form, format, repoPolicy) {
+        var repoPolicyField = form.findField('repoPolicy');
+        if (this.isMavenFormat(format))
+        {
+          repoPolicyField.enable();
+          repoPolicyField.setValue(Sonatype.utils.upperFirstCharLowerRest(repoPolicy || 'RELEASE'));
+        } else {
+          repoPolicyField.setValue('Mixed');
+          repoPolicyField.disable();
+        }
+      },
+      updateIndexableCombo : function(form, format) {
+        var indexableCombo = form.findField('indexable');
+        if (this.isMavenFormat(format))
+        {
+          indexableCombo.enable();
+        }
+        else
+        {
+          indexableCombo.setValue('False');
+          indexableCombo.disable();
+        }
+      },
+      updateDownloadRemoteIndexCombo : function(form, format) {
+        var downloadRemoteIndexCombo = form.findField('downloadRemoteIndexes');
 
+        if (downloadRemoteIndexCombo)
+        {
+          if (this.isMavenFormat(format))
+          {
+            downloadRemoteIndexCombo.enable();
+          }
+          else
+          {
+            downloadRemoteIndexCombo.setValue('False');
+            downloadRemoteIndexCombo.disable();
+          }
+        }
+      },
+      updateFields : function(form, data) {
+        this.updateIndexableCombo(form, data.format);
+        this.updateRepoPolicyField(form, data.format, data.repoPolicy)
+        this.updateDownloadRemoteIndexCombo(form, data.format);
+        this.contribute(data, 'enter')
+      },
+      afterProviderSelectHandler : function(combo, rec, index) {
+        this.updateFields(this.form, rec.data);
+      },
+      showHandler : function() {
+        this.updateWritePolicy();
+      },
+      loadHandler : function(form, action, receivedData) {
+        this.updateFields(form, receivedData)
+      }
     });
 
 Sonatype.repoServer.HostedRepositoryEditor = function(config) {
@@ -310,6 +426,7 @@ Sonatype.repoServer.HostedRepositoryEditor = function(config) {
               helpText : ht.name,
               name : 'name',
               width : 200,
+              htmlDecode : true,
               allowBlank : false
             }, {
               xtype : 'textfield',
@@ -340,6 +457,7 @@ Sonatype.repoServer.HostedRepositoryEditor = function(config) {
               disabled : !this.isNew,
               listeners : {
                 select : this.providerSelectHandler,
+                beforeselect : function(combo, rec, index) { this.contribute(rec.data, 'leave'); return true },
                 scope : this
               }
             }, {
@@ -469,36 +587,9 @@ Sonatype.repoServer.HostedRepositoryEditor = function(config) {
             }]
       });
 
-  this.on('show', this.showHandler, this);
 };
 
 Ext.extend(Sonatype.repoServer.HostedRepositoryEditor, Sonatype.repoServer.AbstractRepositoryEditor, {
-      afterProviderSelectHandler : function(combo, rec, index) {
-        this.updateIndexableCombo(rec.data.format);
-      },
-
-      showHandler : function(panel) {
-        var formatField = this.form.findField('format');
-        if (formatField)
-        {
-          this.updateIndexableCombo(formatField.getValue());
-        }
-
-        this.updateWritePolicy();
-      },
-
-      updateIndexableCombo : function(repoFormat) {
-        var indexableCombo = this.form.findField('indexable');
-        if (repoFormat == 'maven2')
-        {
-          indexableCombo.enable();
-        }
-        else
-        {
-          indexableCombo.setValue('False');
-          indexableCombo.disable();
-        }
-      },
       updateWritePolicy : function() {
 
         var repoPolicyField = this.find('name', 'repoPolicy')[0];
@@ -652,6 +743,7 @@ Sonatype.repoServer.ProxyRepositoryEditor = function(config) {
               disabled : !this.isNew,
               listeners : {
                 select : this.providerSelectHandler,
+                beforeselect : function(combo, rec, index) { this.contribute(rec.data, 'leave'); return true },
                 scope : this
               }
             }, {
@@ -748,7 +840,7 @@ Sonatype.repoServer.ProxyRepositoryEditor = function(config) {
                     allowBlank : false
                   }, {}, {
                     xtype : 'combo',
-                    fieldLabel : 'Auto blocking active',
+                    fieldLabel : 'Auto Blocking Enabled',
                     helpText : ht.autoBlockActive,
                     name : 'autoBlockActive',
                     itemCls : 'required-field',
@@ -764,7 +856,7 @@ Sonatype.repoServer.ProxyRepositoryEditor = function(config) {
                     allowBlank : false
                   }, {
                     xtype : 'combo',
-                    fieldLabel : 'File content validation',
+                    fieldLabel : 'File Content Validation',
                     helpText : ht.fileTypeValidation,
                     name : 'fileTypeValidation',
                     itemCls : 'required-field',
@@ -941,7 +1033,6 @@ Sonatype.repoServer.ProxyRepositoryEditor = function(config) {
               items : [{
                     xtype : 'textfield',
                     fieldLabel : 'User Agent',
-                    itemCls : 'required-field',
                     helpText : ht.userAgentString,
                     name : 'remoteStorage.connectionSettings.userAgentString',
                     anchor : Sonatype.view.FIELD_OFFSET,
@@ -1072,22 +1163,17 @@ Sonatype.repoServer.ProxyRepositoryEditor = function(config) {
                         }]
                   }]
             } // end proxy settings
-        ],
-        listeners : {
-          load : {
-            fn : this.loadHandler,
-            scope : this
-          }
-        }
+        ]
       });
 };
 
 Ext.extend(Sonatype.repoServer.ProxyRepositoryEditor, Sonatype.repoServer.AbstractRepositoryEditor, {
       loadHandler : function(form, action, receivedData) {
-        var repoType = receivedData.repoType;
-        var repoPolicy = receivedData.repoPolicy;
+        Sonatype.repoServer.AbstractRepositoryEditor.prototype.loadHandler.apply(this, arguments);
 
-        if (repoType == 'proxy' && !receivedData.remoteStorage.remoteStorageUrl.match(REPO_REMOTE_STORAGE_REGEXP))
+        var repoType = receivedData.repoType;
+
+        if (repoType == 'proxy' && receivedData.remoteStorage && !receivedData.remoteStorage.remoteStorageUrl.match(REPO_REMOTE_STORAGE_REGEXP))
         {
           var rsUrl = this.form.findField('remoteStorage.remoteStorageUrl');
           rsUrl.disable();
@@ -1096,44 +1182,6 @@ Ext.extend(Sonatype.repoServer.ProxyRepositoryEditor, Sonatype.repoServer.Abstra
           // Disable the editor - this is a temporary measure,
           // until we find a better solution for procurement repos
           this.buttons[0].disable();
-        }
-
-        var formatField = this.form.findField('format');
-        if (formatField)
-        {
-          this.updateDownloadRemoteIndexCombo(formatField.getValue());
-          this.updateIndexableCombo(formatField.getValue());
-        }
-      },
-
-      afterProviderSelectHandler : function(combo, rec, index) {
-        this.updateDownloadRemoteIndexCombo(rec.data.format);
-        this.updateIndexableCombo(rec.data.format);
-      },
-
-      updateDownloadRemoteIndexCombo : function(repoFormat) {
-        var downloadRemoteIndexCombo = this.form.findField('downloadRemoteIndexes');
-        if (repoFormat == 'maven2')
-        {
-          downloadRemoteIndexCombo.enable();
-        }
-        else
-        {
-          downloadRemoteIndexCombo.setValue('False');
-          downloadRemoteIndexCombo.disable();
-        }
-      },
-
-      updateIndexableCombo : function(repoFormat) {
-        var indexableCombo = this.form.findField('indexable');
-        if (repoFormat == 'maven2')
-        {
-          indexableCombo.enable();
-        }
-        else
-        {
-          indexableCombo.setValue('False');
-          indexableCombo.disable();
         }
       }
 
@@ -1259,6 +1307,7 @@ Sonatype.repoServer.VirtualRepositoryEditor = function(config) {
               disabled : !this.isNew,
               listeners : {
                 select : this.providerSelectHandler,
+                beforeselect : function(combo, rec, index) { this.contribute(rec.data, 'leave'); return true },
                 scope : this
               }
             }, {
@@ -1350,7 +1399,8 @@ Ext.extend(Sonatype.repoServer.VirtualRepositoryEditor, Sonatype.repoServer.Abst
                 return false;
               });
         }
-      }
+      },
+      loadHandler : function(form, action, receivedData) {}
     });
 
 Sonatype.Events.addListener('repositoryViewInit', function(cardPanel, rec) {

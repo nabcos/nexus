@@ -1,20 +1,14 @@
 /*
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 /*
  * Help text resource file for Nexus resource forms Dependencies:
@@ -231,14 +225,14 @@
     repoTargets : {
       name : 'The name of the repository target.',
       contentClass : 'The content class of the repository target. It will be matched only against repositories with the same content class.',
-      pattern : 'Enter a pattern expression and click "Add" to add it to the list. Regular expressions are used to match the artifact path. The path is everything after /nexus/content/ so it will include the group or repository name. .* is used to specify all paths. \'.*/com/some/company/.*\' will match any artifact with \'com.some.company\' as the group id or artifact id.'
+      pattern : 'Enter a pattern expression and click "Add" to add it to the list. Regular expressions are used to match the artifact path. ".*" is used to specify all paths. ".*/com/some/company/.*" will match any artifact with "com.some.company" as the group id or artifact id. "^/com/some/company/.*" will match any artifact starting with com/some/company.'
     },
 
     log : {
-      rootLoggerLevel : 'The root logger level for your log4j configuration.',
-      rootLoggerAppenders : 'The root logger appenders for your log4j configuration.',
-      fileAppenderLocation : 'The file appender location for your log4j configuration.',
-      fileAppenderPattern : 'The file appender pattern for your log4j configuration.'
+      rootLoggerLevel : 'The root logger level for your logging configuration.',
+      rootLoggerAppenders : 'The root logger appenders for your logging configuration.',
+      fileAppenderLocation : 'The file appender location for your logging configuration.',
+      fileAppenderPattern : 'The file appender pattern for your logging configuration.'
     },
 
     repoMirrors : {

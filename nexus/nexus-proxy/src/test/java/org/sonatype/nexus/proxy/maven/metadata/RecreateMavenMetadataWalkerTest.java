@@ -1,23 +1,18 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.proxy.maven.metadata;
 
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -25,29 +20,34 @@ import java.io.IOException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.junit.Assert;
-import org.junit.Test;
-
 import org.apache.maven.artifact.repository.metadata.Metadata;
 import org.apache.maven.artifact.repository.metadata.Plugin;
 import org.codehaus.plexus.util.StringUtils;
+import org.junit.Assert;
+import org.junit.Test;
 import org.sonatype.jettytestsuite.ServletServer;
 import org.sonatype.nexus.proxy.AbstractProxyTestEnvironment;
 import org.sonatype.nexus.proxy.EnvironmentBuilder;
 import org.sonatype.nexus.proxy.ItemNotFoundException;
 import org.sonatype.nexus.proxy.M2TestsuiteEnvironmentBuilder;
 import org.sonatype.nexus.proxy.ResourceStoreRequest;
+import org.sonatype.nexus.proxy.events.RepositoryItemEventStore;
+import org.sonatype.nexus.proxy.events.RepositoryItemEventStoreUpdate;
 import org.sonatype.nexus.proxy.item.RepositoryItemUid;
+import org.sonatype.nexus.proxy.item.StorageFileItem;
 import org.sonatype.nexus.proxy.maven.RecreateMavenMetadataWalkerProcessor;
 import org.sonatype.nexus.proxy.maven.metadata.operations.MetadataBuilder;
 import org.sonatype.nexus.proxy.maven.metadata.operations.MetadataException;
 import org.sonatype.nexus.proxy.repository.Repository;
 import org.sonatype.nexus.proxy.walker.DefaultWalkerContext;
 import org.sonatype.nexus.proxy.walker.Walker;
+import org.sonatype.plexus.appevents.Event;
+import org.sonatype.plexus.appevents.EventListener;
 
 /**
  * @author Juven Xu
@@ -62,7 +62,7 @@ public class RecreateMavenMetadataWalkerTest
 
     private Repository inhouseSnapshot;
 
-    private File repoBase = new File( "./target/test-classes/mavenMetadataTestRepo" );
+    private File repoBase;
 
     private Walker walker;
 
@@ -149,8 +149,9 @@ public class RecreateMavenMetadataWalkerTest
     public void setUp()
         throws Exception
     {
-
         super.setUp();
+
+        repoBase = new File( getBasedir(), "target/test-classes/mavenMetadataTestRepo" );
 
         inhouseRelease = getRepositoryRegistry().getRepository( "inhouse" );
 
@@ -272,6 +273,112 @@ public class RecreateMavenMetadataWalkerTest
         }
         return md;
     }
+
+    // ==
+
+    /**
+     * This test is to assert that there is no unjustified checksum file creation happening on system (existing
+     * _correct_ checksums are not overwritten with new files having SAME content).
+     */
+    @Test
+    public void testRebuildMavenMetadataIsSmarter()
+        throws Exception
+    {
+        final Repository repo = inhouseRelease;
+
+        // == 1st pass: we recreate all the maven metadata for given repo to have them all in place
+        {
+            final DefaultWalkerContext ctx =
+                new DefaultWalkerContext( repo, new ResourceStoreRequest( RepositoryItemUid.PATH_ROOT, true ) );
+            ctx.getProcessors().add( new RecreateMavenMetadataWalkerProcessor( getLogger() ) );
+            walker.walk( ctx );
+        }
+
+        // === 2nd pass: all MD is recreated, and they are valid, NO overwrite should happen at all!
+        {
+            final DefaultWalkerContext ctx =
+                new DefaultWalkerContext( repo, new ResourceStoreRequest( RepositoryItemUid.PATH_ROOT, true ) );
+            ctx.getProcessors().add( new RecreateMavenMetadataWalkerProcessor( getLogger() ) );
+            final ValidationEventListener validationEventListener = new ValidationEventListener();
+            getApplicationEventMulticaster().addEventListener( validationEventListener );
+            walker.walk( ctx );
+            getApplicationEventMulticaster().removeEventListener( validationEventListener );
+            assertFalse( "We should not record any STORE!", validationEventListener.hasStoresRecorded() );
+        }
+
+        // === 3rd pass: e manually "break" one checksum, and expect that one only to be overwritten
+        {
+            final String checksumPath = "/com/mycom/group1/maven-metadata.xml.sha1";
+            final String checksumPathMd5 = "/com/mycom/group1/maven-metadata.xml.md5";
+            // coming from http://repo1.maven.org/maven2/org/slf4j/slf4j-api/1.6.4/slf4j-api-1.6.4.pom.sha1
+            final String wrongChecksum = "93c66c9afd6cf7b91bd4ecf38a60ca48fc5f2078";
+
+            repo.storeItem( new ResourceStoreRequest( checksumPath ),
+                new ByteArrayInputStream( wrongChecksum.getBytes( "UTF-8" ) ), null );
+
+            final DefaultWalkerContext ctx =
+                new DefaultWalkerContext( repo, new ResourceStoreRequest( RepositoryItemUid.PATH_ROOT, true ) );
+            ctx.getProcessors().add( new RecreateMavenMetadataWalkerProcessor( getLogger() ) );
+            final ValidationEventListener validationEventListener = new ValidationEventListener();
+            getApplicationEventMulticaster().addEventListener( validationEventListener );
+            walker.walk( ctx );
+            getApplicationEventMulticaster().removeEventListener( validationEventListener );
+            assertTrue( "We should record one STORE!", validationEventListener.hasStoresRecorded() );
+            assertEquals( "There should be only 2 STOREs!", 2, validationEventListener.storeCount() );
+            assertTrue( "This checksum should be recreated!", validationEventListener.isOverwritten( checksumPath ) );
+            // if SHA1 detected a broken, BOTH sha1 and md5 are recreated
+            assertTrue( "This checksum should be recreated!", validationEventListener.isOverwritten( checksumPathMd5 ) );
+        }
+
+    }
+
+    // ==
+
+    /**
+     * We are listening for store events, and are gathering them... FOUL happens if a checksum storeUpdate (so,
+     * overwrite happens) event flies in, without having it's main file already gathered stored (it's path is already
+     * gathered). We do this for SHA1's only since both checksums are handled at same place by DefaultMetadataHelper,
+     * hence, if one changes, both are changing.
+     * 
+     * @author cstamas
+     */
+    public static class ValidationEventListener
+        implements EventListener
+    {
+        private HashSet<String> pathsFromStoreEvents;
+
+        public ValidationEventListener()
+        {
+            this.pathsFromStoreEvents = new HashSet<String>();
+        }
+
+        public boolean isOverwritten( final String path )
+        {
+            return pathsFromStoreEvents.contains( path );
+        }
+
+        public boolean hasStoresRecorded()
+        {
+            return !pathsFromStoreEvents.isEmpty();
+        }
+
+        public int storeCount()
+        {
+            return pathsFromStoreEvents.size();
+        }
+
+        @Override
+        public void onEvent( Event<?> evt )
+        {
+            if ( evt instanceof RepositoryItemEventStore )
+            {
+                final RepositoryItemEventStore sevt = (RepositoryItemEventStore) evt;
+                pathsFromStoreEvents.add( sevt.getItem().getRepositoryItemUid().getPath() );
+            }
+        }
+    }
+
+    // ==
 
     @Test
     public void testRecreateMavenMetadataWalkerWalkerRelease()

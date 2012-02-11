@@ -1,20 +1,14 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.proxy.maven;
 
@@ -23,9 +17,6 @@ import java.io.InputStream;
 import java.util.Arrays;
 import java.util.Map;
 
-import org.apache.maven.index.artifact.ArtifactPackagingMapper;
-import org.apache.maven.index.artifact.Gav;
-import org.apache.maven.index.artifact.GavCalculator;
 import org.codehaus.plexus.component.annotations.Requirement;
 import org.codehaus.plexus.util.StringUtils;
 import org.sonatype.nexus.proxy.AccessDeniedException;
@@ -45,6 +36,9 @@ import org.sonatype.nexus.proxy.item.StorageFileItem;
 import org.sonatype.nexus.proxy.item.StorageItem;
 import org.sonatype.nexus.proxy.item.StorageLinkItem;
 import org.sonatype.nexus.proxy.item.StringContentLocator;
+import org.sonatype.nexus.proxy.maven.gav.Gav;
+import org.sonatype.nexus.proxy.maven.gav.GavCalculator;
+import org.sonatype.nexus.proxy.maven.packaging.ArtifactPackagingMapper;
 import org.sonatype.nexus.proxy.repository.AbstractShadowRepository;
 import org.sonatype.nexus.proxy.repository.DefaultRepositoryKind;
 import org.sonatype.nexus.proxy.repository.IncompatibleMasterRepositoryException;
@@ -96,6 +90,7 @@ public abstract class LayoutConverterShadowRepository
      */
     private ArtifactStoreHelper artifactStoreHelper;
 
+    @Override
     public RepositoryKind getRepositoryKind()
     {
         return repositoryKind;
@@ -132,49 +127,60 @@ public abstract class LayoutConverterShadowRepository
         return m2GavCalculator;
     }
 
+    @Override
     public ArtifactPackagingMapper getArtifactPackagingMapper()
     {
         return artifactPackagingMapper;
     }
 
+    @Override
     public RepositoryPolicy getRepositoryPolicy()
     {
         return getMasterRepository().getRepositoryPolicy();
     }
 
+    @Override
     public void setRepositoryPolicy( RepositoryPolicy repositoryPolicy )
     {
         throw new UnsupportedOperationException( "This method is not supported on Repository of type SHADOW" );
     }
 
+    @Override
     public boolean isMavenArtifact( StorageItem item )
     {
         return isMavenArtifactPath( item.getPath() );
     }
 
+    @Override
     public boolean isMavenMetadata( StorageItem item )
     {
         return isMavenMetadataPath( item.getPath() );
     }
 
+    @Override
     public boolean isMavenArtifactPath( String path )
     {
         return getGavCalculator().pathToGav( path ) != null;
     }
 
+    @Override
     public abstract boolean isMavenMetadataPath( String path );
 
+    @Override
     public MetadataManager getMetadataManager()
     {
         return metadataManager;
     }
 
-    public boolean recreateMavenMetadata( ResourceStoreRequest request )
+    @Override
+    public boolean recreateMavenMetadata( final ResourceStoreRequest request )
     {
         return false;
     }
 
-    public void storeItemWithChecksums( ResourceStoreRequest request, InputStream is, Map<String, String> userAttributes )
+    @Override
+    public void storeItemWithChecksums( final ResourceStoreRequest request, final InputStream is,
+                                        final Map<String, String> userAttributes )
         throws UnsupportedStorageOperationException, IllegalOperationException, StorageException, AccessDeniedException
     {
         String originalPath = request.getRequestPath();
@@ -197,9 +203,9 @@ public abstract class LayoutConverterShadowRepository
 
             StorageFileItem storedFile = (StorageFileItem) retrieveItem( false, request );
 
-            String sha1Hash = storedFile.getAttributes().get( DigestCalculatingInspector.DIGEST_SHA1_KEY );
+            String sha1Hash = storedFile.getRepositoryItemAttributes().get( DigestCalculatingInspector.DIGEST_SHA1_KEY );
 
-            String md5Hash = storedFile.getAttributes().get( DigestCalculatingInspector.DIGEST_MD5_KEY );
+            String md5Hash = storedFile.getRepositoryItemAttributes().get( DigestCalculatingInspector.DIGEST_MD5_KEY );
 
             if ( !StringUtils.isEmpty( sha1Hash ) )
             {
@@ -227,7 +233,8 @@ public abstract class LayoutConverterShadowRepository
         }
     }
 
-    public void deleteItemWithChecksums( ResourceStoreRequest request )
+    @Override
+    public void deleteItemWithChecksums( final ResourceStoreRequest request )
         throws UnsupportedStorageOperationException, IllegalOperationException, ItemNotFoundException,
         StorageException, AccessDeniedException
     {
@@ -286,7 +293,8 @@ public abstract class LayoutConverterShadowRepository
         }
     }
 
-    public void storeItemWithChecksums( boolean fromTask, AbstractStorageItem item )
+    @Override
+    public void storeItemWithChecksums( final boolean fromTask, final AbstractStorageItem item )
         throws UnsupportedStorageOperationException, IllegalOperationException, StorageException
     {
         if ( getLogger().isDebugEnabled() )
@@ -309,9 +317,9 @@ public abstract class LayoutConverterShadowRepository
 
             ResourceStoreRequest req = new ResourceStoreRequest( storedFile );
 
-            String sha1Hash = storedFile.getAttributes().get( DigestCalculatingInspector.DIGEST_SHA1_KEY );
+            String sha1Hash = storedFile.getRepositoryItemAttributes().get( DigestCalculatingInspector.DIGEST_SHA1_KEY );
 
-            String md5Hash = storedFile.getAttributes().get( DigestCalculatingInspector.DIGEST_MD5_KEY );
+            String md5Hash = storedFile.getRepositoryItemAttributes().get( DigestCalculatingInspector.DIGEST_MD5_KEY );
 
             if ( !StringUtils.isEmpty( sha1Hash ) )
             {
@@ -335,7 +343,8 @@ public abstract class LayoutConverterShadowRepository
         }
     }
 
-    public void deleteItemWithChecksums( boolean fromTask, ResourceStoreRequest request )
+    @Override
+    public void deleteItemWithChecksums( final boolean fromTask, final ResourceStoreRequest request )
         throws UnsupportedStorageOperationException, IllegalOperationException, ItemNotFoundException, StorageException
     {
         if ( getLogger().isDebugEnabled() )
@@ -376,6 +385,7 @@ public abstract class LayoutConverterShadowRepository
         }
     }
 
+    @Override
     public ArtifactStoreHelper getArtifactStoreHelper()
     {
         if ( artifactStoreHelper == null )
@@ -395,9 +405,9 @@ public abstract class LayoutConverterShadowRepository
      * @param path
      * @return
      */
-    protected String transformM1toM2( String path )
+    protected String transformM1toM2( final String path )
     {
-        Gav gav = getM1GavCalculator().pathToGav( path );
+        final Gav gav = getM1GavCalculator().pathToGav( path );
 
         // Unsupported path
         if ( gav == null )
@@ -410,7 +420,7 @@ public abstract class LayoutConverterShadowRepository
         // version
         // files
 
-        StringBuffer sb = new StringBuffer( RepositoryItemUid.PATH_ROOT );
+        StringBuilder sb = new StringBuilder( RepositoryItemUid.PATH_ROOT );
         sb.append( gav.getGroupId().replaceAll( "\\.", "/" ) );
         sb.append( RepositoryItemUid.PATH_SEPARATOR );
         sb.append( gav.getArtifactId() );
@@ -427,9 +437,9 @@ public abstract class LayoutConverterShadowRepository
      * @param path
      * @return
      */
-    protected String transformM2toM1( String path )
+    protected String transformM2toM1( final String path )
     {
-        Gav gav = getM2GavCalculator().pathToGav( path );
+        final Gav gav = getM2GavCalculator().pathToGav( path );
 
         // Unsupported path
         if ( gav == null )
@@ -440,7 +450,7 @@ public abstract class LayoutConverterShadowRepository
         // g.i.d
         // poms/jars/java-sources/licenses
         // files
-        StringBuffer sb = new StringBuffer( RepositoryItemUid.PATH_ROOT );
+        StringBuilder sb = new StringBuilder( RepositoryItemUid.PATH_ROOT );
         sb.append( gav.getGroupId() );
         sb.append( RepositoryItemUid.PATH_SEPARATOR );
         sb.append( gav.getExtension() + "s" );
@@ -450,7 +460,34 @@ public abstract class LayoutConverterShadowRepository
     }
 
     @Override
-    protected void deleteLink( StorageItem item )
+    protected StorageLinkItem createLink( final StorageItem item )
+        throws UnsupportedStorageOperationException, IllegalOperationException, StorageException
+    {
+        String shadowPath = null;
+
+        shadowPath = transformMaster2Shadow( item.getPath() );
+
+        if ( shadowPath != null )
+        {
+            ResourceStoreRequest req = new ResourceStoreRequest( shadowPath );
+
+            req.getRequestContext().putAll( item.getItemContext() );
+
+            DefaultStorageLinkItem link =
+                new DefaultStorageLinkItem( this, req, true, true, item.getRepositoryItemUid() );
+
+            storeItem( false, link );
+
+            return link;
+        }
+        else
+        {
+            return null;
+        }
+    }
+
+    @Override
+    protected void deleteLink( final StorageItem item )
         throws UnsupportedStorageOperationException, IllegalOperationException, ItemNotFoundException, StorageException
     {
         String shadowPath = null;
@@ -517,33 +554,6 @@ public abstract class LayoutConverterShadowRepository
         }
     }
 
-    @Override
-    protected StorageLinkItem createLink( StorageItem item )
-        throws UnsupportedStorageOperationException, IllegalOperationException, StorageException
-    {
-        String shadowPath = null;
-
-        shadowPath = transformMaster2Shadow( item.getPath() );
-
-        if ( shadowPath != null )
-        {
-            ResourceStoreRequest req = new ResourceStoreRequest( shadowPath );
-
-            req.getRequestContext().putAll( item.getItemContext() );
-
-            DefaultStorageLinkItem link =
-                new DefaultStorageLinkItem( this, req, true, true, item.getRepositoryItemUid() );
-
-            storeItem( false, link );
-
-            return link;
-        }
-        else
-        {
-            return null;
-        }
-    }
-
     /**
      * Gets the shadow path from master path. If path is not transformable, return null.
      * 
@@ -553,7 +563,7 @@ public abstract class LayoutConverterShadowRepository
     protected abstract String transformMaster2Shadow( String path );
 
     @Override
-    protected StorageItem doRetrieveItem( ResourceStoreRequest request )
+    protected StorageItem doRetrieveItem( final ResourceStoreRequest request )
         throws IllegalOperationException, ItemNotFoundException, StorageException
     {
         StorageItem result = null;

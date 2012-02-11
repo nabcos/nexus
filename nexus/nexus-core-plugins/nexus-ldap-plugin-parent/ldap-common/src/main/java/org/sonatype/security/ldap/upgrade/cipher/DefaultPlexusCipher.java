@@ -1,46 +1,22 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.security.ldap.upgrade.cipher;
-
-/*
- * Copyright (C) 2008 Sonatype Inc.
- * Sonatype Inc, licenses this file to you under the Apache License,
- * Version 2.0 (the "License"); you may not use this file except in
- * compliance with the License.  You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
- * KIND, either express or implied.  See the License for the
- * specific language governing permissions and limitations
- * under the License.
- */
 
 import java.io.ByteArrayOutputStream;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
 import java.security.SecureRandom;
-import java.security.Security;
 import java.security.spec.KeySpec;
-
 import javax.crypto.Cipher;
 import javax.crypto.SecretKey;
 import javax.crypto.SecretKeyFactory;
@@ -51,38 +27,48 @@ import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.util.encoders.Base64Encoder;
 import org.codehaus.plexus.component.annotations.Component;
 import org.codehaus.plexus.component.annotations.Configuration;
-import org.codehaus.plexus.logging.AbstractLogEnabled;
-import org.codehaus.plexus.personality.plexus.lifecycle.phase.Initializable;
-import org.codehaus.plexus.personality.plexus.lifecycle.phase.InitializationException;
 import org.codehaus.plexus.util.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * @author <a href="oleg@codehaus.org">Oleg Gusakov</a>
  */
 @Component( role = PlexusCipher.class )
 public class DefaultPlexusCipher
-    extends AbstractLogEnabled
-    implements PlexusCipher, Initializable
+    implements PlexusCipher
 {
-    private static final String SECURITY_PROVIDER = "BC";
-
     private static final int SALT_SIZE = 8;
 
     private static final String STRING_ENCODING = "UTF8";
 
+    private Logger logger = LoggerFactory.getLogger( getClass() );
+
     /**
      * Encryption algorithm to use by this instance. Needs protected scope for tests
      */
-    @Configuration(value="PBEWithSHAAnd128BitRC4")
+    @Configuration( value = "PBEWithSHAAnd128BitRC4" )
     protected String algorithm = "PBEWithSHAAnd128BitRC4";
 
     /**
      * Number of iterations when generationg the key
-     *
+     * 
      * @plexus.configuration default-value="23"
      */
-    @Configuration(value="23")
+    @Configuration( value = "23" )
     protected int iterationCount = 23;
+
+    private final BouncyCastleProvider bouncyCastleProvider;
+
+    protected Logger getLogger()
+    {
+        return logger;
+    }
+
+    public DefaultPlexusCipher()
+    {
+        this.bouncyCastleProvider = new BouncyCastleProvider();
+    }
 
     // /**
     // * Salt to init this cypher
@@ -92,14 +78,6 @@ public class DefaultPlexusCipher
     // protected String salt = "maven.rules.in.this";
     // protected byte [] saltData = new byte[8];
     // ---------------------------------------------------------------
-    public void initialize()
-        throws InitializationException
-    {
-        Security.addProvider( new BouncyCastleProvider() );
-
-        // if( StringUtils.isEmpty(salt) && salt.length() > 7 )
-        // System.arraycopy( salt.getBytes(), 0, saltData, 0, 8 );
-    }
 
     // ---------------------------------------------------------------
     private Cipher init( String passPhrase, byte[] salt, boolean encrypt )
@@ -109,8 +87,8 @@ public class DefaultPlexusCipher
         try
         {
             KeySpec keySpec = new PBEKeySpec( passPhrase.toCharArray() );
-            SecretKey key = SecretKeyFactory.getInstance( algorithm, SECURITY_PROVIDER ).generateSecret( keySpec );
-            Cipher cipher = Cipher.getInstance( algorithm );
+            SecretKey key = SecretKeyFactory.getInstance( algorithm, bouncyCastleProvider ).generateSecret( keySpec );
+            Cipher cipher = Cipher.getInstance( algorithm, bouncyCastleProvider );
 
             PBEParameterSpec paramSpec = new PBEParameterSpec( salt, iterationCount );
 

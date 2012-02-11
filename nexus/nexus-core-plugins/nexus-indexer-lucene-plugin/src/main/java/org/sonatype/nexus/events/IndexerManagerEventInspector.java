@@ -1,20 +1,14 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.events;
 
@@ -28,6 +22,7 @@ import org.sonatype.nexus.proxy.events.RepositoryItemEvent;
 import org.sonatype.nexus.proxy.events.RepositoryItemEventCache;
 import org.sonatype.nexus.proxy.events.RepositoryItemEventDelete;
 import org.sonatype.nexus.proxy.events.RepositoryItemEventStore;
+import org.sonatype.nexus.util.SystemPropertiesHelper;
 import org.sonatype.plexus.appevents.Event;
 
 /**
@@ -40,6 +35,9 @@ public class IndexerManagerEventInspector
     extends AbstractEventInspector
     implements AsynchronousEventInspector
 {
+    private final boolean enabled = SystemPropertiesHelper.getBoolean(
+        "org.sonatype.nexus.events.IndexerManagerEventInspector.enabled", true );
+
     @Requirement
     private IndexerManager indexerManager;
 
@@ -51,13 +49,16 @@ public class IndexerManagerEventInspector
     public boolean accepts( Event<?> evt )
     {
         // listen for STORE, CACHE, DELETE only
-        return ( RepositoryItemEventStore.class.isAssignableFrom( evt.getClass() )
-            || RepositoryItemEventCache.class.isAssignableFrom( evt.getClass() ) || RepositoryItemEventDelete.class.isAssignableFrom( evt.getClass() ) );
+        return enabled
+            && ( evt instanceof RepositoryItemEventStore || evt instanceof RepositoryItemEventCache || evt instanceof RepositoryItemEventDelete );
     }
 
     public void inspect( Event<?> evt )
     {
-        inspectForIndexerManager( evt );
+        if ( enabled )
+        {
+            inspectForIndexerManager( evt );
+        }
     }
 
     private void inspectForIndexerManager( Event<?> evt )

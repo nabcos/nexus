@@ -1,20 +1,14 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.repositories;
 
@@ -26,6 +20,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.codehaus.plexus.util.xml.pull.XmlPullParserException;
+import org.hamcrest.MatcherAssert;
+import org.hamcrest.Matchers;
+import org.junit.Assert;
 import org.junit.Test;
 import org.sonatype.nexus.AbstractNexusTestCase;
 import org.sonatype.nexus.Nexus;
@@ -68,15 +65,19 @@ public class Nexus2216GroupValidationTest
             List<String> memberIds = new ArrayList<String>();
             for ( Repository repo : publicGroup.getMemberRepositories() )
             {
-                memberIds.add(  repo.getId() );
+                memberIds.add( repo.getId() );
             }
-            assertEquals( "Repo object list returned a different set of repos", publicGroup.getMemberRepositoryIds(), memberIds );
 
-            assertEquals( "The config should be correct, ids found are: "+ publicGroup.getMemberRepositoryIds(), 7, publicGroup.getMemberRepositories().size() );
+            MatcherAssert.assertThat( "Repo object list returned a different set of repos", memberIds,
+                Matchers.equalTo( publicGroup.getMemberRepositoryIds() ) );
+
+            MatcherAssert.assertThat(
+                "The config should be 4 reposes, but ids found are: " + publicGroup.getMemberRepositoryIds(),
+                publicGroup.getMemberRepositories().size(), Matchers.equalTo( 4 ) );
         }
         catch ( Exception e )
         {
-            fail( "Should succeed!" );
+            Assert.fail( "Should succeed!" );
         }
     }
 
@@ -114,7 +115,7 @@ public class Nexus2216GroupValidationTest
 
         if ( publicGroup == null )
         {
-            fail( "Public group not found in default configuration?" );
+            Assert.fail( "Public group not found in default configuration?" );
         }
 
         config.getRepositories().remove( publicGroup );

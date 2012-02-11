@@ -1,20 +1,14 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.proxy.repository;
 
@@ -22,9 +16,11 @@ import java.util.Collection;
 import java.util.Map;
 
 import org.sonatype.nexus.configuration.Configurable;
+import org.sonatype.nexus.mime.MimeRulesSource;
 import org.sonatype.nexus.plugins.RepositoryType;
 import org.sonatype.nexus.proxy.IllegalOperationException;
 import org.sonatype.nexus.proxy.ItemNotFoundException;
+import org.sonatype.nexus.proxy.LocalStorageException;
 import org.sonatype.nexus.proxy.ResourceStore;
 import org.sonatype.nexus.proxy.ResourceStoreRequest;
 import org.sonatype.nexus.proxy.StorageException;
@@ -169,8 +165,10 @@ public interface Repository
      * 
      * @param action
      * @return
+     * @throws StorageException when some storage (IO) problem happens.
      */
-    Action getResultingActionOnWrite( ResourceStoreRequest rsr );
+    Action getResultingActionOnWrite( ResourceStoreRequest rsr )
+        throws LocalStorageException;
 
     /**
      * Is the target repository compatible to this one
@@ -277,6 +275,14 @@ public interface Repository
 
     // ==================================================
     // LocalStorage et al
+
+    /**
+     * Returns the Repository specific MIME rules source.
+     * 
+     * @return
+     * @since 2.0
+     */
+    MimeRulesSource getMimeRulesSource();
 
     /**
      * Returns the attribute handler used by repository.
@@ -449,7 +455,13 @@ public interface Repository
     // Maintenance
 
     /**
-     * Purges the caches (NFC and expires files) from path and below.
+     * Expires all the caches used by this repository implementation from path and below. What kind of caches are
+     * tackled depends on the actual implementation behind this interface (NFC, proxy cache or something third). To gain
+     * more control, you can call corresponding methods manually too. Currently, this method equals to a single call to
+     * {@link #expireNotFoundCaches(ResourceStoreRequest)} on hosted repositories, and on a sequential calls of
+     * {@link ProxyRepository#expireProxyCaches(ResourceStoreRequest)} and
+     * {@link #expireNotFoundCaches(ResourceStoreRequest)} on proxy repositories. Moreover, on group repositories, this
+     * call is propagated to it's member repositories!
      * 
      * @param path a path from to start descending. If null, it is taken as "root".
      */

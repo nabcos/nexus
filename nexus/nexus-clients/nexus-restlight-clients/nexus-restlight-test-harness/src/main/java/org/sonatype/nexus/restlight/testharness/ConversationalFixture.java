@@ -1,29 +1,23 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.restlight.testharness;
 
-import org.apache.log4j.LogManager;
-import org.apache.log4j.Logger;
 import org.mortbay.jetty.Handler;
 import org.mortbay.jetty.Request;
 import org.mortbay.jetty.Server;
 import org.mortbay.jetty.handler.AbstractHandler;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -40,7 +34,7 @@ import javax.servlet.http.HttpServletResponse;
  * encapsulates a series of other {@link RESTTestFixture} instances in a particular order. As client
  * requests are handled, the next fixture in order is used to validate the request and send back
  * a response. Each traversed fixture is tracked, allowing this fixture to determine whether the
- * full expected conversation took place, as an additional validation step for the client test. 
+ * full expected conversation took place, as an additional validation step for the client test.
  */
 public class ConversationalFixture
     extends AbstractRESTTestFixture
@@ -93,7 +87,7 @@ public class ConversationalFixture
 
     /**
      * {@inheritDoc}
-     * 
+     *
      * The {@link Handler} instance returned here tracks an index in the fixture's conversation list. Each successive
      * client request it receives, it attempts to pull out a corresponding fixture instance, and delegate the request to
      * that fixture. If the client makes more requests than there are fixtures in the conversation, the handler returns
@@ -111,7 +105,7 @@ public class ConversationalFixture
             public void handle( final String target, final HttpServletRequest request, final HttpServletResponse response, final int dispatch )
             throws IOException, ServletException
             {
-                Logger logger = LogManager.getLogger( ConversationalFixture.class );
+                Logger logger = LoggerFactory.getLogger( ConversationalFixture.class );
 
                 if ( conversation == null || conversation.isEmpty() )
                 {

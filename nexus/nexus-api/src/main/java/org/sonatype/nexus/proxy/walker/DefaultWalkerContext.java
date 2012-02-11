@@ -1,20 +1,14 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.proxy.walker;
 
@@ -25,6 +19,7 @@ import java.util.Map;
 
 import org.sonatype.nexus.proxy.ResourceStoreRequest;
 import org.sonatype.nexus.proxy.repository.Repository;
+import org.sonatype.scheduling.TaskInterruptedException;
 import org.sonatype.scheduling.TaskUtil;
 
 public class DefaultWalkerContext
@@ -34,9 +29,9 @@ public class DefaultWalkerContext
 
     private final WalkerFilter walkerFilter;
 
-    private final boolean collectionsOnly;
-
     private final ResourceStoreRequest request;
+
+    private final WalkerThrottleController throttleController;
 
     private Map<String, Object> context;
 
@@ -53,11 +48,11 @@ public class DefaultWalkerContext
 
     public DefaultWalkerContext( Repository store, ResourceStoreRequest request, WalkerFilter filter )
     {
-        this( store, request, filter, true, false );
+        this( store, request, filter, true );
     }
 
     public DefaultWalkerContext( Repository store, ResourceStoreRequest request, WalkerFilter filter,
-                                 boolean localOnly, boolean collectionsOnly )
+                                 boolean localOnly )
     {
         super();
 
@@ -67,21 +62,26 @@ public class DefaultWalkerContext
 
         this.walkerFilter = filter;
 
-        this.collectionsOnly = collectionsOnly;
-
         this.running = true;
+
+        if ( request.getRequestContext().containsKey( WalkerThrottleController.CONTEXT_KEY, false ) )
+        {
+            this.throttleController =
+                (WalkerThrottleController) request.getRequestContext().get( WalkerThrottleController.CONTEXT_KEY, false );
+        }
+        else
+        {
+            this.throttleController = WalkerThrottleController.NO_THROTTLING;
+        }
     }
 
+    @Override
     public boolean isLocalOnly()
     {
         return request.isRequestLocalOnly();
     }
 
-    public boolean isCollectionsOnly()
-    {
-        return collectionsOnly;
-    }
-
+    @Override
     public Map<String, Object> getContext()
     {
         if ( context == null )
@@ -91,6 +91,7 @@ public class DefaultWalkerContext
         return context;
     }
 
+    @Override
     public List<WalkerProcessor> getProcessors()
     {
         if ( processors == null )
@@ -101,38 +102,57 @@ public class DefaultWalkerContext
         return processors;
     }
 
+    @Override
     public void setProcessors( List<WalkerProcessor> processors )
     {
         this.processors = processors;
     }
 
+    @Override
     public WalkerFilter getFilter()
     {
         return walkerFilter;
     }
 
+    @Override
     public Repository getRepository()
     {
         return resourceStore;
     }
 
+    @Override
     public ResourceStoreRequest getResourceStoreRequest()
     {
         return request;
     }
 
+    @Override
     public boolean isStopped()
     {
-        TaskUtil.checkInterruption();
+        try
+        {
+            TaskUtil.checkInterruption();
+        }
+        catch ( TaskInterruptedException e )
+        {
+            if ( stopCause == null )
+            {
+                stopCause = e;
+            }
+
+            running = false;
+        }
 
         return !running;
     }
 
+    @Override
     public Throwable getStopCause()
     {
         return stopCause;
     }
 
+    @Override
     public void stop( Throwable cause )
     {
         running = false;
@@ -140,4 +160,9 @@ public class DefaultWalkerContext
         stopCause = cause;
     }
 
+    @Override
+    public WalkerThrottleController getThrottleController()
+    {
+        return this.throttleController;
+    }
 }

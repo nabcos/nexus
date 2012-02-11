@@ -1,28 +1,26 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.security.ldap.dao;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+
+import org.codehaus.plexus.util.StringUtils;
 
 public class LdapAuthConfiguration
 {
@@ -115,9 +113,7 @@ public class LdapAuthConfiguration
     /** If not, don't parse it as a labelUri. */
     private boolean isWebsiteAttributeLabelUri = true;
 
-    // calculated from the above.
-    /** The user attributes. */
-    private transient String[] userAttributes;
+    private String ldapFilter;
 
     private boolean ldapGroupsAsRoles;
     
@@ -408,12 +404,19 @@ public class LdapAuthConfiguration
      */
     public synchronized String[] getUserAttributes()
     {
-        if ( userAttributes == null )
+        List<String> result = new ArrayList<String>();
+        String[] allAttributes =
+            new String[]{ userIdAttribute, passwordAttribute, userRealNameAttribute, emailAddressAttribute,
+                websiteAttribute, userMemberOfAttribute };
+        for ( String attribute : allAttributes )
         {
-            userAttributes = new String[] { userIdAttribute, passwordAttribute, userRealNameAttribute, emailAddressAttribute, websiteAttribute, userMemberOfAttribute };
+            if ( StringUtils.isNotBlank( attribute ) )
+            {
+                result.add( attribute );
+            }
         }
 
-        return userAttributes;
+        return result.toArray( new String[result.size()] );
     }
 
     /**
@@ -553,6 +556,16 @@ public class LdapAuthConfiguration
         this.userMemberOfAttribute = userMemberOfAttribute;
     }
 
+    public String getLdapFilter()
+    {
+        return ldapFilter;
+    }
+
+    public void setLdapFilter(String ldapFilter)
+    {
+        this.ldapFilter = ldapFilter;
+    }
+
     @Override
     public int hashCode()
     {
@@ -578,6 +591,7 @@ public class LdapAuthConfiguration
         result = prime * result + ( userSubtree ? 1231 : 1237 );
         result = prime * result + ( ( websiteAttribute == null ) ? 0 : websiteAttribute.hashCode() );
         result = prime * result + ( ( websiteUriLabel == null ) ? 0 : websiteUriLabel.hashCode() );
+        result = prime * result + ( ( ldapFilter == null) ? 0 : ldapFilter.hashCode() );
         return result;
     }
 
@@ -710,6 +724,13 @@ public class LdapAuthConfiguration
                 return false;
         }
         else if ( !websiteUriLabel.equals( other.websiteUriLabel ) )
+            return false;
+        if ( ldapFilter == null )
+        {
+            if ( other.ldapFilter != null )
+                return false;
+        }
+        else if ( !ldapFilter.equals( other.ldapFilter ) )
             return false;
         return true;
     }

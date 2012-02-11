@@ -1,22 +1,18 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.integrationtests.nexus1765;
+
+import static org.sonatype.nexus.test.utils.ResponseMatchers.*;
 
 import java.util.List;
 
@@ -81,10 +77,7 @@ public class Nexus1765RepositoryFilterIT
         TestContainer.getInstance().getTestContext().setUsername( TEST_USER_NAME );
         TestContainer.getInstance().getTestContext().setPassword( TEST_USER_PASSWORD );
 
-        String repoId = this.getTestRepositoryId();
-        Response response = RequestFacade.doGetRequest( "service/local/repositories/" + repoId );
-
-        Assert.assertEquals( response.getStatus().getCode(), 403, "Status: " + response.getStatus() );
+        RequestFacade.doGet( "service/local/repositories/" + getTestRepositoryId(), respondsWithStatusCode( 403 ) );
     }
 
     @Test
@@ -92,9 +85,7 @@ public class Nexus1765RepositoryFilterIT
         throws Exception
     {
 
-        String repoId = this.getTestRepositoryId();
-
-        RepositoryBaseResource repo = this.repoUtil.getRepository( repoId );
+        RepositoryBaseResource repo = repoUtil.getRepository( getTestRepositoryId() );
         repo.setName( "new name" );
 
         // use test user
@@ -177,8 +168,7 @@ public class Nexus1765RepositoryFilterIT
         TestContainer.getInstance().getTestContext().setPassword( TEST_USER_PASSWORD );
 
         String repoId = "public";
-        Response response = RequestFacade.doGetRequest( GroupMessageUtil.SERVICE_PART +"/" + repoId );
-        Assert.assertEquals( response.getStatus().getCode(), 403, "Status: " + response.getStatus() );
+        RequestFacade.doGet( GroupMessageUtil.SERVICE_PART + "/" + repoId, respondsWithStatusCode( 403 ) );
     }
     
     @Test

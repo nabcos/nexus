@@ -1,23 +1,18 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.proxy.repository;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -26,19 +21,16 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
+import org.codehaus.plexus.component.annotations.Requirement;
 import org.codehaus.plexus.util.ExceptionUtils;
 import org.codehaus.plexus.util.StringUtils;
 import org.sonatype.configuration.ConfigurationException;
-import org.sonatype.nexus.artifact.NexusItemInfo;
 import org.sonatype.nexus.configuration.model.CRemoteStorage;
 import org.sonatype.nexus.configuration.model.CRepositoryCoreConfiguration;
-import org.sonatype.nexus.feeds.NexusArtifactEvent;
 import org.sonatype.nexus.proxy.IllegalOperationException;
-import org.sonatype.nexus.proxy.InvalidItemContentException;
 import org.sonatype.nexus.proxy.ItemNotFoundException;
+import org.sonatype.nexus.proxy.LocalStorageException;
 import org.sonatype.nexus.proxy.RemoteAccessDeniedException;
 import org.sonatype.nexus.proxy.RemoteAccessException;
 import org.sonatype.nexus.proxy.RemoteStorageException;
@@ -47,9 +39,12 @@ import org.sonatype.nexus.proxy.StorageException;
 import org.sonatype.nexus.proxy.access.Action;
 import org.sonatype.nexus.proxy.events.RepositoryConfigurationUpdatedEvent;
 import org.sonatype.nexus.proxy.events.RepositoryEventEvictUnusedItems;
+import org.sonatype.nexus.proxy.events.RepositoryEventExpireProxyCaches;
 import org.sonatype.nexus.proxy.events.RepositoryEventProxyModeChanged;
 import org.sonatype.nexus.proxy.events.RepositoryEventProxyModeSet;
-import org.sonatype.nexus.proxy.events.RepositoryItemEventCache;
+import org.sonatype.nexus.proxy.events.RepositoryItemEventCacheCreate;
+import org.sonatype.nexus.proxy.events.RepositoryItemEventCacheUpdate;
+import org.sonatype.nexus.proxy.events.RepositoryItemValidationEvent;
 import org.sonatype.nexus.proxy.item.AbstractStorageItem;
 import org.sonatype.nexus.proxy.item.RepositoryItemUid;
 import org.sonatype.nexus.proxy.item.RepositoryItemUidLock;
@@ -59,18 +54,20 @@ import org.sonatype.nexus.proxy.mirror.DefaultDownloadMirrors;
 import org.sonatype.nexus.proxy.mirror.DownloadMirrorSelector;
 import org.sonatype.nexus.proxy.mirror.DownloadMirrors;
 import org.sonatype.nexus.proxy.repository.EvictUnusedItemsWalkerProcessor.EvictUnusedItemsWalkerFilter;
+import org.sonatype.nexus.proxy.repository.threads.ThreadPoolManager;
 import org.sonatype.nexus.proxy.storage.UnsupportedStorageOperationException;
+import org.sonatype.nexus.proxy.storage.remote.AbstractHTTPRemoteRepositoryStorage;
 import org.sonatype.nexus.proxy.storage.remote.DefaultRemoteStorageContext;
 import org.sonatype.nexus.proxy.storage.remote.RemoteRepositoryStorage;
 import org.sonatype.nexus.proxy.storage.remote.RemoteStorageContext;
-import org.sonatype.nexus.proxy.storage.remote.commonshttpclient.CommonsHttpClientRemoteStorage;
+import org.sonatype.nexus.proxy.utils.RepositoryStringUtils;
 import org.sonatype.nexus.proxy.walker.DefaultWalkerContext;
 import org.sonatype.nexus.proxy.walker.WalkerException;
 import org.sonatype.nexus.proxy.walker.WalkerFilter;
-import org.sonatype.nexus.threads.NexusThreadFactory;
 import org.sonatype.nexus.util.ConstantNumberSequence;
 import org.sonatype.nexus.util.FibonacciNumberSequence;
 import org.sonatype.nexus.util.NumberSequence;
+import org.sonatype.nexus.util.SystemPropertiesHelper;
 
 /**
  * Adds the proxying capability to a simple repository. The proxying will happen only if reposiory has remote storage!
@@ -83,8 +80,17 @@ public abstract class AbstractProxyRepository
     extends AbstractRepository
     implements ProxyRepository
 {
-    /** The time while we do NOT check an already known remote status: 5 mins. This value is system default. */
-    private static final long REMOTE_STATUS_RETAIN_TIME = 5L * 60L * 1000L;
+
+    /**
+     * Default time to do NOT check an already known remote status: 5 mins.
+     */
+    private static final long DEFAULT_REMOTE_STATUS_RETAIN_TIME = 5L * 60L * 1000L;
+
+    /**
+     * The time while we do NOT check an already known remote status
+     */
+    private static final long REMOTE_STATUS_RETAIN_TIME = SystemPropertiesHelper.getLong(
+        "plexus.autoblock.remote.status.retain.time", DEFAULT_REMOTE_STATUS_RETAIN_TIME );
 
     /**
      * The maximum amount of time to have a repository in AUTOBlock status: 60 minutes (1hr). This value is system
@@ -93,37 +99,59 @@ public abstract class AbstractProxyRepository
      */
     private static final long AUTO_BLOCK_STATUS_MAX_RETAIN_TIME = 60L * 60L * 1000L;
 
-    private static final ExecutorService remoteStatusUpdateExecutorService =
-        Executors.newCachedThreadPool( new NexusThreadFactory( "nxproxy", "Remote Status Update" ) );
+    @Requirement
+    private ThreadPoolManager poolManager;
 
-    /** if remote url changed, need special handling after save */
+    /**
+     * The remote status checker thread, used in Proxies for handling autoBlocking. Not to go into Pool above, is
+     * handled separately.
+     */
+    private Thread repositoryStatusCheckerThread;
+
+    /**
+     * if remote url changed, need special handling after save
+     */
     private boolean remoteUrlChanged = false;
 
-    /** The proxy remote status */
+    /**
+     * The proxy remote status
+     */
     private volatile RemoteStatus remoteStatus = RemoteStatus.UNKNOWN;
 
-    /** Last time remote status was updated */
+    /**
+     * Last time remote status was updated
+     */
     private volatile long remoteStatusUpdated = 0;
 
-    /** How much should be the last known remote status be retained. */
+    /**
+     * How much should be the last known remote status be retained.
+     */
     private volatile NumberSequence remoteStatusRetainTimeSequence = new ConstantNumberSequence(
         REMOTE_STATUS_RETAIN_TIME );
 
-    private Thread repositoryStatusCheckerThread;
-
-    /** The remote storage. */
+    /**
+     * The remote storage.
+     */
     private RemoteRepositoryStorage remoteStorage;
 
-    /** Remote storage context to store connection configs. */
+    /**
+     * Remote storage context to store connection configs.
+     */
     private RemoteStorageContext remoteStorageContext;
 
-    /** Proxy selector, if set */
+    /**
+     * Proxy selector, if set
+     */
     private ProxySelector proxySelector;
 
-    /** Download mirrors */
+    /**
+     * Download mirrors
+     */
     private DownloadMirrors dMirrors;
 
-    /** Item content validators */
+    /**
+     * Item content validators
+     */
     private Map<String, ItemContentValidator> itemContentValidators;
 
     @Override
@@ -166,6 +194,85 @@ public abstract class AbstractProxyRepository
     }
 
     @Override
+    public void expireProxyCaches( final ResourceStoreRequest request )
+    {
+        if ( !getLocalStatus().shouldServiceRequest() )
+        {
+            return;
+        }
+
+        // do this only if we ARE a proxy
+        // crawl the local storage (which is in this case proxy cache)
+        // and flip the isExpired attribute bits to true
+        if ( getRepositoryKind().isFacetAvailable( ProxyRepository.class ) )
+        {
+            if ( StringUtils.isEmpty( request.getRequestPath() ) )
+            {
+                request.setRequestPath( RepositoryItemUid.PATH_ROOT );
+            }
+            request.setRequestLocalOnly( true );
+
+            getLogger().debug(
+                String.format( "Expiring proxy cache in repository %s from path=\"%s\"",
+                    RepositoryStringUtils.getHumanizedNameString( this ), request.getRequestPath() ) );
+
+            // 1st, expire all the files below path
+            final DefaultWalkerContext ctx = new DefaultWalkerContext( this, request );
+            final ExpireCacheWalker expireCacheWalkerProcessor = new ExpireCacheWalker( this );
+            ctx.getProcessors().add( expireCacheWalkerProcessor );
+
+            try
+            {
+                getWalker().walk( ctx );
+            }
+            catch ( WalkerException e )
+            {
+                if ( !( e.getWalkerContext().getStopCause() instanceof ItemNotFoundException ) )
+                {
+                    // everything that is not ItemNotFound should be reported,
+                    // otherwise just neglect it
+                    throw e;
+                }
+            }
+            
+            if( getLogger().isDebugEnabled() )
+            {
+                if( expireCacheWalkerProcessor.isCacheAltered() )
+                {
+                    getLogger().info(
+                        String.format( "Proxy cache was expired for repository %s from path=\"%s\"",
+                            RepositoryStringUtils.getHumanizedNameString( this ), request.getRequestPath() ) );
+                }
+                else
+                {
+                    getLogger().debug(
+                        String.format( "Proxy cache not altered for repository %s from path=\"%s\"",
+                            RepositoryStringUtils.getHumanizedNameString( this ), request.getRequestPath() ) );
+                }
+            }
+
+            // fire off the new event if crawling did end, so we did flip all the bits
+            getApplicationEventMulticaster().notifyEventListeners(
+                new RepositoryEventExpireProxyCaches( this, request.getRequestPath(),
+                    request.getRequestContext().flatten(), expireCacheWalkerProcessor.isCacheAltered() ) );
+        }
+    }
+
+    @Override
+    public void expireCaches( final ResourceStoreRequest request )
+    {
+        if ( !getLocalStatus().shouldServiceRequest() )
+        {
+            return;
+        }
+
+        // expire proxy cache
+        expireProxyCaches( request );
+        // do the stuff we inherited
+        super.expireCaches( request );
+    }
+
+    @Override
     public Collection<String> evictUnusedItems( ResourceStoreRequest request, final long timestamp )
     {
         if ( !getLocalStatus().shouldServiceRequest() )
@@ -193,8 +300,8 @@ public abstract class AbstractProxyRepository
                                                      EvictUnusedItemsWalkerProcessor processor, WalkerFilter filter )
     {
         getLogger().info(
-            "Evicting unused items from proxy repository \"" + getName() + "\" (id=\"" + getId() + "\") from path "
-                + request.getRequestPath() );
+            String.format( "Evicting unused items from proxy repository %s from path=\"%s\"",
+                RepositoryStringUtils.getHumanizedNameString( this ), request.getRequestPath() ) );
 
         request.setRequestLocalOnly( true );
 
@@ -261,11 +368,9 @@ public abstract class AbstractProxyRepository
         if ( !val && ProxyMode.BLOCKED_AUTO.equals( getProxyMode() ) )
         {
             getLogger().warn(
-                "Repository \""
-                    + getName()
-                    + "\" (id="
-                    + getId()
-                    + ") was auto-blocked, but user disabled this feature. Unblocking repository, but this MAY cause Nexus to leak connections (if remote repository is still down)!" );
+                String.format(
+                    "Proxy Repository %s was auto-blocked, but user disabled this feature. Unblocking repository, but this MAY cause Nexus to leak connections (if remote repository is still down)!",
+                    RepositoryStringUtils.getHumanizedNameString( this ) ) );
 
             setProxyMode( ProxyMode.ALLOW );
         }
@@ -329,80 +434,90 @@ public abstract class AbstractProxyRepository
         {
             ProxyMode oldProxyMode = getProxyMode();
 
-            // change configuration only if we have a transition
-            if ( !oldProxyMode.equals( proxyMode ) )
+            // NEXUS-4537: apply transition constraints: BLOCKED_MANUALLY cannot be transitioned into BLOCKED_AUTO
+            if ( !( ProxyMode.BLOCKED_AUTO.equals( proxyMode ) && ProxyMode.BLOCKED_MANUAL.equals( oldProxyMode ) ) )
             {
-                // NEXUS-3552: Tricking the config framework, we are making this applied _without_ making configuration
-                // dirty
-                if ( ProxyMode.BLOCKED_AUTO.equals( proxyMode ) || ProxyMode.BLOCKED_AUTO.equals( oldProxyMode ) )
+                // change configuration only if we have a transition
+                if ( !oldProxyMode.equals( proxyMode ) )
                 {
-                    getExternalConfiguration( false ).setProxyMode( proxyMode );
-
-                    if ( isDirty() )
+                    // NEXUS-3552: Tricking the config framework, we are making this applied _without_ making
+                    // configuration
+                    // dirty
+                    if ( ProxyMode.BLOCKED_AUTO.equals( proxyMode ) || ProxyMode.BLOCKED_AUTO.equals( oldProxyMode ) )
                     {
-                        // we are dirty, then just set same value in the "changed" one too
+                        getExternalConfiguration( false ).setProxyMode( proxyMode );
+
+                        if ( isDirty() )
+                        {
+                            // we are dirty, then just set same value in the "changed" one too
+                            getExternalConfiguration( true ).setProxyMode( proxyMode );
+                        }
+                    }
+                    else
+                    {
+                        // this makes it dirty if it was not dirty yet, but this is the intention too
                         getExternalConfiguration( true ).setProxyMode( proxyMode );
+                    }
+                }
+
+                // setting the time to retain remote status, depending on proxy mode
+                // if not blocked_auto, just use default as it was the case before AutoBlock
+                if ( ProxyMode.BLOCKED_AUTO.equals( proxyMode ) )
+                {
+                    if ( !( this.remoteStatusRetainTimeSequence instanceof FibonacciNumberSequence ) )
+                    {
+                        // take the timeout * 2 as initial step
+                        long initialStep = getRemoteConnectionSettings().getConnectionTimeout() * 2L;
+
+                        // make it a fibonacci one
+                        this.remoteStatusRetainTimeSequence = new FibonacciNumberSequence( initialStep );
+
+                        // make it step one
+                        this.remoteStatusRetainTimeSequence.next();
+
+                        // ping the monitor thread
+                        if ( this.repositoryStatusCheckerThread != null )
+                        {
+                            this.repositoryStatusCheckerThread.interrupt();
+                        }
                     }
                 }
                 else
                 {
-                    // this makes it dirty if it was not dirty yet, but this is the intention too
-                    getExternalConfiguration( true ).setProxyMode( proxyMode );
+                    this.remoteStatusRetainTimeSequence = new ConstantNumberSequence( REMOTE_STATUS_RETAIN_TIME );
                 }
-            }
 
-            // setting the time to retain remote status, depending on proxy mode
-            // if not blocked_auto, just use default as it was the case before AutoBlock
-            if ( ProxyMode.BLOCKED_AUTO.equals( proxyMode ) )
-            {
-                if ( !( this.remoteStatusRetainTimeSequence instanceof FibonacciNumberSequence ) )
+                // if this is proxy
+                // and was !shouldProxy() and the new is shouldProxy()
+                if ( proxyMode != null && proxyMode.shouldProxy() && !oldProxyMode.shouldProxy() )
                 {
-                    // take the timeout * 2 as initial step
-                    long initialStep = getRemoteConnectionSettings().getConnectionTimeout() * 2L;
-
-                    // make it a fibonacci one
-                    this.remoteStatusRetainTimeSequence = new FibonacciNumberSequence( initialStep );
-
-                    // make it step one
-                    this.remoteStatusRetainTimeSequence.next();
-
-                    // ping the monitor thread
-                    if ( this.repositoryStatusCheckerThread != null )
+                    // NEXUS-4410: do this only when we are going BLOCKED_MANUAL -> ALLOW transition
+                    // In case of Auto unblocking, do not perform purge!
+                    if ( !oldProxyMode.shouldAutoUnblock() )
                     {
-                        this.repositoryStatusCheckerThread.interrupt();
+                        if ( getLogger().isDebugEnabled() )
+                        {
+                            getLogger().debug( "We have a BLOCKED_MANUAL -> ALLOW transition, purging NFC" );
+                        }
+
+                        getNotFoundCache().purge();
                     }
-                }
-            }
-            else
-            {
-                this.remoteStatusRetainTimeSequence = new ConstantNumberSequence( REMOTE_STATUS_RETAIN_TIME );
-            }
 
-            // if this is proxy
-            // and was !shouldProxy() and the new is shouldProxy()
-            if ( proxyMode != null && proxyMode.shouldProxy() && !oldProxyMode.shouldProxy() )
-            {
-                if ( getLogger().isDebugEnabled() )
-                {
-                    getLogger().debug( "We have a !shouldProxy() -> shouldProxy() transition, purging NFC" );
+                    resetRemoteStatus();
                 }
 
-                getNotFoundCache().purge();
-
-                resetRemoteStatus();
-            }
-
-            if ( sendNotification )
-            {
-                // this one should be fired _always_
-                getApplicationEventMulticaster().notifyEventListeners(
-                    new RepositoryEventProxyModeSet( this, oldProxyMode, proxyMode, cause ) );
-
-                if ( !proxyMode.equals( oldProxyMode ) )
+                if ( sendNotification )
                 {
-                    // this one should be fired on _transition_ only
+                    // this one should be fired _always_
                     getApplicationEventMulticaster().notifyEventListeners(
-                        new RepositoryEventProxyModeChanged( this, oldProxyMode, proxyMode, cause ) );
+                        new RepositoryEventProxyModeSet( this, oldProxyMode, proxyMode, cause ) );
+
+                    if ( !proxyMode.equals( oldProxyMode ) )
+                    {
+                        // this one should be fired on _transition_ only
+                        getApplicationEventMulticaster().notifyEventListeners(
+                            new RepositoryEventProxyModeChanged( this, oldProxyMode, proxyMode, cause ) );
+                    }
                 }
             }
         }
@@ -422,28 +537,36 @@ public abstract class AbstractProxyRepository
      */
     protected void autoBlockProxying( Throwable cause )
     {
-        RemoteRepositoryStorage remoteStorage = getRemoteStorage();
+        // depend of proxy mode
+        ProxyMode oldProxyMode = getProxyMode();
 
-        /**
-         * Special case here to handle Amazon S3 storage. Problem is that if we do a request against a folder, a 403
-         * will always be returned, as S3 doesn't support that. So we simple check if its s3 and if so, we ignore the
-         * fact that 403 was returned (only in regards to auto-blocking, rest of system will still handle 403 response
-         * as expected)
-         */
-        try
+        // Detect do we deal with S3 remote peer, those are not managed/autoblocked, since we have no
+        // proper means using HTTP only to detect the issue.
         {
-            if ( remoteStorage instanceof CommonsHttpClientRemoteStorage
-                && ( (CommonsHttpClientRemoteStorage) remoteStorage ).isRemotePeerAmazonS3Storage( this )
-                && cause instanceof RemoteAccessDeniedException )
+            RemoteRepositoryStorage remoteStorage = getRemoteStorage();
+
+            /**
+             * Special case here to handle Amazon S3 storage. Problem is that if we do a request against a folder, a 403
+             * will always be returned, as S3 doesn't support that. So we simple check if its s3 and if so, we ignore
+             * the fact that 403 was returned (only in regards to auto-blocking, rest of system will still handle 403
+             * response as expected)
+             */
+            try
             {
-                getLogger().debug( "Not autoblocking repository id " + getId() + "since this is Amazon S3 proxy repo" );
-                return;
+                if ( remoteStorage instanceof AbstractHTTPRemoteRepositoryStorage
+                    && ( (AbstractHTTPRemoteRepositoryStorage) remoteStorage ).isRemotePeerAmazonS3Storage( this )
+                    && cause instanceof RemoteAccessDeniedException )
+                {
+                    getLogger().debug(
+                        "Not autoblocking repository id " + getId() + "since this is Amazon S3 proxy repo" );
+                    return;
+                }
             }
-        }
-        catch ( StorageException e )
-        {
-            // This shouldn't occur, since we are just checking the context
-            getLogger().debug( "Unable to validate if proxy repository id " + getId() + "is Amazon S3", e );
+            catch ( StorageException e )
+            {
+                // This shouldn't occur, since we are just checking the context
+                getLogger().debug( "Unable to validate if proxy repository id " + getId() + "is Amazon S3", e );
+            }
         }
 
         // invalidate remote status
@@ -452,16 +575,13 @@ public abstract class AbstractProxyRepository
         // do we need to do anything at all?
         boolean autoBlockActive = isAutoBlockActive();
 
-        // if yes, then do it
-        ProxyMode oldProxyMode = getProxyMode();
-
         // nag only here
         if ( !ProxyMode.BLOCKED_AUTO.equals( oldProxyMode ) )
         {
             StringBuilder sb = new StringBuilder();
 
-            sb.append( "Remote peer of proxy repository \"" + getName() + "\" (id=" + getId() + ") threw a "
-                + cause.getClass().getName() + " exception." );
+            sb.append( "Remote peer of proxy repository " + RepositoryStringUtils.getHumanizedNameString( this )
+                + " threw a " + cause.getClass().getName() + " exception." );
 
             if ( cause instanceof RemoteAccessException )
             {
@@ -539,17 +659,16 @@ public abstract class AbstractProxyRepository
 
         ProxyMode oldProxyMode = getProxyMode();
 
-        if ( !ProxyMode.BLOCKED_AUTO.equals( oldProxyMode ) )
+        if ( oldProxyMode.shouldAutoUnblock() )
         {
-            return;
+            // log the event
+            getLogger().warn(
+                String.format(
+                    "Remote peer of proxy repository %s detected as healthy, un-blocking the proxy repository (it was AutoBlocked by Nexus).",
+                    RepositoryStringUtils.getHumanizedNameString( this ) ) );
+
+            setProxyMode( ProxyMode.ALLOW, true, null );
         }
-
-        // log the event
-        getLogger().info(
-            "Remote peer of proxy repository \"" + getName() + "\" (id=" + getId()
-                + ") detected as healty, un-blocking the proxy repository (it was AutoBlocked by Nexus)." );
-
-        setProxyMode( ProxyMode.ALLOW, true, null );
 
         // NEXUS-3552: Do NOT save configuration, just make it applied (see setProxyMode() how it is done)
         // try
@@ -586,7 +705,7 @@ public abstract class AbstractProxyRepository
     }
 
     public void setRemoteUrl( String remoteUrl )
-        throws StorageException
+        throws RemoteStorageException
     {
         if ( getRemoteStorage() != null )
         {
@@ -629,7 +748,7 @@ public abstract class AbstractProxyRepository
     /**
      * Sets the item max age in (in minutes).
      * 
-     * @param itemMaxAgeInSeconds the new item max age in (in minutes).
+     * @param itemMaxAge the new item max age in (in minutes).
      */
     public void setItemMaxAge( int itemMaxAge )
     {
@@ -641,7 +760,9 @@ public abstract class AbstractProxyRepository
         remoteStatusUpdated = 0;
     }
 
-    /** Is checking in progress? */
+    /**
+     * Is checking in progress?
+     */
     private volatile boolean _remoteStatusChecking = false;
 
     public RemoteStatus getRemoteStatus( ResourceStoreRequest request, boolean forceCheck )
@@ -657,7 +778,7 @@ public abstract class AbstractProxyRepository
             // check for thread and go check it
             _remoteStatusChecking = true;
 
-            remoteStatusUpdateExecutorService.submit( new RemoteStatusUpdateCallable( request ) );
+            poolManager.getRepositoryThreadPool( this ).submit( new RemoteStatusUpdateCallable( request ) );
         }
 
         return remoteStatus;
@@ -784,7 +905,7 @@ public abstract class AbstractProxyRepository
     }
 
     public AbstractStorageItem doCacheItem( AbstractStorageItem item )
-        throws StorageException
+        throws LocalStorageException
     {
         boolean shouldCache = true;
 
@@ -809,9 +930,11 @@ public abstract class AbstractProxyRepository
                     "Caching item " + item.getRepositoryItemUid().toString() + " in local storage of repository." );
             }
 
-            final RepositoryItemUidLock itemLock = item.getRepositoryItemUid().createLock();
-            
+            final RepositoryItemUidLock itemLock = item.getRepositoryItemUid().getLock();
+
             itemLock.lock( Action.create );
+
+            final Action action = getResultingActionOnWrite( item.getResourceStoreRequest() );
 
             try
             {
@@ -825,17 +948,27 @@ public abstract class AbstractProxyRepository
             finally
             {
                 itemLock.unlock();
-                itemLock.release();
             }
 
-            getApplicationEventMulticaster().notifyEventListeners( new RepositoryItemEventCache( this, result ) );
-
             result.getItemContext().putAll( item.getItemContext() );
+
+            if ( Action.create.equals( action ) )
+            {
+                getApplicationEventMulticaster().notifyEventListeners(
+                    new RepositoryItemEventCacheCreate( this, result ) );
+            }
+            else
+            {
+                getApplicationEventMulticaster().notifyEventListeners(
+                    new RepositoryItemEventCacheUpdate( this, result ) );
+            }
         }
         catch ( ItemNotFoundException ex )
         {
             getLogger().warn(
-                "Nexus BUG, ItemNotFoundException during cache! Please report this issue along with the stack trace below!",
+                "Nexus BUG in "
+                    + RepositoryStringUtils.getHumanizedNameString( this )
+                    + ", ItemNotFoundException during cache! Please report this issue along with the stack trace below!",
                 ex );
 
             // this is a nonsense, we just stored it!
@@ -843,7 +976,9 @@ public abstract class AbstractProxyRepository
         }
         catch ( UnsupportedStorageOperationException ex )
         {
-            getLogger().warn( "LocalStorage does not handle STORE operation, not caching remote fetched item.", ex );
+            getLogger().warn(
+                "LocalStorage or repository " + RepositoryStringUtils.getHumanizedNameString( this )
+                    + " does not handle STORE operation, not caching remote fetched item.", ex );
 
             result = item;
         }
@@ -878,8 +1013,8 @@ public abstract class AbstractProxyRepository
         // serving up partial downloads...
 
         final RepositoryItemUid itemUid = createUid( request.getRequestPath() );
-        
-        final RepositoryItemUidLock itemUidLock = itemUid.createLock();
+
+        final RepositoryItemUidLock itemUidLock = itemUid.getLock();
 
         itemUidLock.lock( Action.read );
 
@@ -958,7 +1093,6 @@ public abstract class AbstractProxyRepository
         finally
         {
             itemUidLock.unlock();
-            itemUidLock.release();
         }
     }
 
@@ -1013,7 +1147,7 @@ public abstract class AbstractProxyRepository
 
                             if ( !shouldGetRemote )
                             {
-                                markItemRemotelyChecked( request );
+                                markItemRemotelyChecked( localItem );
 
                                 if ( getLogger().isDebugEnabled() )
                                 {
@@ -1031,6 +1165,14 @@ public abstract class AbstractProxyRepository
                             }
 
                         }
+                        catch ( RemoteAccessDeniedException ex )
+                        {
+                            // NEXUS-4593 do not autoblock, 403 is "ok"
+
+                            // do not go remote, but we did not mark it as "remote checked" also.
+                            // let the user do proper setup and probably it will try again
+                            shouldGetRemote = false;
+                        }
                         catch ( RemoteStorageException ex )
                         {
                             autoBlockProxying( ex );
@@ -1039,7 +1181,7 @@ public abstract class AbstractProxyRepository
                             // let the user do proper setup and probably it will try again
                             shouldGetRemote = false;
                         }
-                        catch ( StorageException ex )
+                        catch ( IOException ex )
                         {
                             // do not go remote, but we did not mark it as "remote checked" also.
                             // let the user do proper setup and probably it will try again
@@ -1066,7 +1208,9 @@ public abstract class AbstractProxyRepository
                         }
                         catch ( StorageException ex )
                         {
-                            if ( ex instanceof RemoteStorageException )
+                            if ( ex instanceof RemoteStorageException
+                            // NEXUS-4593 HTTP status 403 should not lead to autoblock
+                                && !( ex instanceof RemoteAccessDeniedException ) )
                             {
                                 autoBlockProxying( ex );
                             }
@@ -1170,7 +1314,7 @@ public abstract class AbstractProxyRepository
         return item;
     }
 
-    private void sendContentValidationEvents( ResourceStoreRequest request, List<NexusArtifactEvent> events,
+    private void sendContentValidationEvents( ResourceStoreRequest request, List<RepositoryItemValidationEvent> events,
                                               boolean isContentValid )
     {
         if ( getLogger().isDebugEnabled() && !isContentValid )
@@ -1178,44 +1322,55 @@ public abstract class AbstractProxyRepository
             getLogger().debug( "Item " + request.toString() + " failed content integrity validation." );
         }
 
-        for ( NexusArtifactEvent event : events )
+        for ( RepositoryItemValidationEvent event : events )
         {
-            getFeedRecorder().addNexusArtifactEvent( event );
+            getApplicationEventMulticaster().notifyEventListeners( event );
         }
     }
 
-    protected void markItemRemotelyChecked( ResourceStoreRequest request )
-        throws StorageException, ItemNotFoundException
+    protected void markItemRemotelyChecked( final StorageItem item )
+        throws IOException, ItemNotFoundException
     {
         // remote file unchanged, touch the local one to renew it's Age
-        getAttributesHandler().touchItemRemoteChecked( this, request );
+        getAttributesHandler().touchItemCheckedRemotely( System.currentTimeMillis(), item );
     }
 
     /**
      * Validates integrity of content of <code>item</code>. Retruns <code>true</code> if item content is valid and
      * <code>false</code> if item content is corrupted. Note that this method is called doRetrieveRemoteItem, so
      * implementation must retrieve checksum files directly from remote storage <code>
-     *   getRemoteStorage().retrieveItem( this, context, getRemoteUrl(), checksumUid.getPath() );
+     * getRemoteStorage().retrieveItem( this, context, getRemoteUrl(), checksumUid.getPath() );
      * </code>
      */
     protected boolean doValidateRemoteItemContent( ResourceStoreRequest req, String baseUrl, AbstractStorageItem item,
-                                                   List<NexusArtifactEvent> events )
+                                                   List<RepositoryItemValidationEvent> events )
     {
         boolean isValid = true;
 
-        for ( ItemContentValidator icv : getItemContentValidators().values() )
+        for ( Map.Entry<String, ItemContentValidator> icventry : getItemContentValidators().entrySet() )
         {
             try
             {
-                isValid = isValid && icv.isRemoteItemContentValid( this, req, baseUrl, item, events );
-                // loop all
+                boolean isValidByCurrentItemContentValidator =
+                    icventry.getValue().isRemoteItemContentValid( this, req, baseUrl, item, events );
+
+                if ( !isValidByCurrentItemContentValidator )
+                {
+                    getLogger().info(
+                        String.format(
+                            "Proxied item %s evaluated as INVALID during content validation (validator=%s, sourceUrl=%s)",
+                            item.getRepositoryItemUid().toString(), icventry.getKey(), item.getRemoteUrl() ) );
+                }
+
+                isValid = isValid && isValidByCurrentItemContentValidator;
             }
             catch ( StorageException e )
             {
-                // TODO subclass StorageException with RemoteStorageException and RemoteStorageException
-                this.getLogger().warn(
-                    "Item: '" + item.getPath() + "' in repository: " + this.getId() + "failed validation, cause: "
-                        + e.getMessage(), e );
+                getLogger().info(
+                    String.format(
+                        "Proxied item %s evaluated as INVALID during content validation (validator=%s, sourceUrl=%s)",
+                        item.getRepositoryItemUid().toString(), icventry.getKey(), item.getRemoteUrl() ), e );
+
                 isValid = false;
             }
         }
@@ -1233,7 +1388,7 @@ public abstract class AbstractProxyRepository
      * @throws StorageException
      */
     protected boolean doCheckRemoteItemExistence( StorageItem localItem, ResourceStoreRequest request )
-        throws RemoteAccessException, StorageException
+        throws RemoteAccessException, RemoteStorageException
     {
         if ( localItem != null )
         {
@@ -1258,6 +1413,8 @@ public abstract class AbstractProxyRepository
      * item operation from the url failed with StorageException, AccessDenied or InvalidItemContent error but the item
      * was successfully retrieve from another url.</li> <li>Mirror url will be removed from blacklist after 30 minutes.</li>
      * The following matrix summarises retry/blacklist behaviour
+     * <p/>
+     * <p/>
      * 
      * <pre>
      * Error condition      Retry?        Blacklist?
@@ -1273,7 +1430,7 @@ public abstract class AbstractProxyRepository
     {
         final RepositoryItemUid itemUid = createUid( request.getRequestPath() );
 
-        final RepositoryItemUidLock itemUidLock = itemUid.createLock();
+        final RepositoryItemUidLock itemUidLock = itemUid.getLock();
 
         // all this remote download happens in exclusive lock
         itemUidLock.lock( Action.create );
@@ -1290,7 +1447,7 @@ public abstract class AbstractProxyRepository
 
             mirrors.add( new Mirror( "default", getRemoteUrl(), getRemoteUrl() ) );
 
-            List<NexusArtifactEvent> events = new ArrayList<NexusArtifactEvent>();
+            List<RepositoryItemValidationEvent> events = new ArrayList<RepositoryItemValidationEvent>();
 
             Exception lastException = null;
 
@@ -1348,13 +1505,6 @@ public abstract class AbstractProxyRepository
                             }
                             else
                             {
-                                // a file was bad, don't block the whole repo
-                                // TODO: we need to break up StorageException into Local and Remote
-                                // a validator could detect that the Remote repo is hosed, i.e. a jar
-                                // gets returned as an html file, which would indicate that the mirror
-                                // is messed up, or a proxy is returning an html page
-                                lastException = new InvalidItemContentException( request, mirror, remoteItem );
-
                                 continue all_urls; // retry with next url
                             }
                         }
@@ -1373,7 +1523,7 @@ public abstract class AbstractProxyRepository
 
                             continue all_urls; // retry with next url
                         }
-                        catch ( StorageException e )
+                        catch ( RemoteStorageException e )
                         {
                             lastException = e;
 
@@ -1394,9 +1544,49 @@ public abstract class AbstractProxyRepository
                                 }
 
                                 getLogger().error(
-                                    "Got Storage Exception while storing remote artifact, will attempt next mirror, cause: "
-                                        + t.getClass().getName() + ": " + t.getMessage() );
+                                    String.format(
+                                        "Got RemoteStorageException in proxy repository %s while retrieving remote artifact \"%s\" from URL %s, this is %s (re)try, cause: %s: %s",
+                                        RepositoryStringUtils.getHumanizedNameString( this ), request.toString(),
+                                        mirror.getUrl(), String.valueOf( i + 1 ), t.getClass().getName(),
+                                        t.getMessage() ) );
                             }
+
+                            // nope, do not switch Mirror yet, obey the retries
+                            // continue all_urls; // retry with next url
+                        }
+                        catch ( LocalStorageException e )
+                        {
+                            lastException = e;
+
+                            selector.feedbackFailure( mirror );
+                            // debug, print all
+                            if ( getLogger().isDebugEnabled() )
+                            {
+                                logFailedMirror( mirror, e );
+                            }
+                            // not debug, only print the message
+                            else
+                            {
+                                Throwable t = ExceptionUtils.getRootCause( e );
+
+                                if ( t == null )
+                                {
+                                    t = e;
+                                }
+
+                                getLogger().error(
+                                    String.format(
+                                        "Got LocalStorageException in proxy repository %s while caching retrieved artifact \"%s\" got from URL %s, will attempt next mirror, cause: %s: %s",
+                                        RepositoryStringUtils.getHumanizedNameString( this ), request.toString(),
+                                        mirror.getUrl(), t.getClass().getName(), t.getMessage() ) );
+                            }
+
+                            // This is actually fatal error? LocalStorageException means something like IOException
+                            // while writing data to disk, full disk, no perms, etc
+                            // currently, we preserve the old -- probably wrong -- behaviour: on IOException Nexus will
+                            // log the error
+                            // but will respond with 404
+                            continue all_urls; // retry with next url
                         }
                         catch ( RuntimeException e )
                         {
@@ -1431,16 +1621,10 @@ public abstract class AbstractProxyRepository
             }
             catch ( UnsupportedStorageOperationException e )
             {
-                getLogger().warn( "Unexpected Exception", e );
+                getLogger().warn( "Unexpected Exception in " + RepositoryStringUtils.getHumanizedNameString( this ), e );
             }
 
-            if ( lastException instanceof InvalidItemContentException )
-            {
-                newContentValidationEvent( (InvalidItemContentException) lastException );
-
-                throw new ItemNotFoundException( request, this, lastException );
-            }
-            else if ( lastException instanceof StorageException )
+            if ( lastException instanceof StorageException )
             {
                 throw (StorageException) lastException;
             }
@@ -1455,31 +1639,7 @@ public abstract class AbstractProxyRepository
         finally
         {
             itemUidLock.unlock();
-            itemUidLock.release();
         }
-    }
-
-    private void newContentValidationEvent( InvalidItemContentException iice )
-    {
-        NexusItemInfo ai = new NexusItemInfo();
-
-        ai.setPath( iice.getRemoteItem().getPath() );
-
-        ai.setRepositoryId( iice.getRemoteItem().getRepositoryId() );
-
-        ai.setRemoteUrl( iice.getRemoteItem().getRemoteUrl() );
-        String msg =
-            "Error, the artifact " + iice.getRemoteItem().getPath() + " content is invalid in repository "
-                + iice.getRemoteItem().getRepositoryId() + "!";
-
-        NexusArtifactEvent nae =
-            new NexusArtifactEvent( new Date(), NexusArtifactEvent.ACTION_BROKEN_INVALID_CONTENT, msg, ai );
-
-        nae.addEventContext( iice.getRemoteItem().getItemContext() );
-
-        nae.addItemAttributes( iice.getRemoteItem().getAttributes() );
-
-        getFeedRecorder().addNexusArtifactEvent( nae );
     }
 
     private void logFailedMirror( Mirror mirror, Exception e )
@@ -1549,6 +1709,7 @@ public abstract class AbstractProxyRepository
     private class RemoteStatusUpdateCallable
         implements Callable<Object>
     {
+
         private ResourceStoreRequest request;
 
         public RemoteStatusUpdateCallable( ResourceStoreRequest request )
@@ -1605,6 +1766,29 @@ public abstract class AbstractProxyRepository
     protected boolean isActionAllowedReadOnly( Action action )
     {
         return action.equals( Action.read ) || action.equals( Action.delete );
+    }
+
+    /**
+     * Beside original behavior, only add to NFC when we are not in BLOCKED mode.
+     * 
+     * @since 2.0
+     */
+    @Override
+    protected boolean shouldAddToNotFoundCache( final ResourceStoreRequest request )
+    {
+        boolean shouldAddToNFC = super.shouldAddToNotFoundCache( request );
+        if ( shouldAddToNFC )
+        {
+            shouldAddToNFC = getProxyMode() == null || getProxyMode().shouldProxy();
+            if ( !shouldAddToNFC && getLogger().isDebugEnabled() )
+            {
+                getLogger().debug(
+                    String.format(
+                        "Proxy repository '%s' is is not allowed to issue remote requests (%s), not adding path '%s' to NFC",
+                        getId(), getProxyMode(), request.getRequestPath() ) );
+            }
+        }
+        return shouldAddToNFC;
     }
 
 }

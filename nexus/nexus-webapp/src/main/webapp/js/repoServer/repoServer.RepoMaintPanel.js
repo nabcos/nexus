@@ -1,20 +1,14 @@
 /*
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 /*
  * Repository Maintenance panel layout and controller
@@ -165,6 +159,57 @@ Sonatype.repoServer.RepositoryPanel = function(config) {
   toolbar.push(this.browseTypeButton);
 
   Sonatype.Events.addListener('nexusRepositoryStatus', this.statusStart, this);
+  
+  var columns = [{
+      name : 'resourceURI'
+  }, {
+    name : 'remoteUri'
+  }, {
+    name : 'id'
+  }, {
+    name : 'exposed'
+  }, {
+    name : 'userManaged'
+  }, {
+    name : 'status'
+  }, {
+    name : 'name',
+    sortType : Ext.data.SortTypes.asUCString,
+    header : 'Repository',
+    width : 175,
+    renderer : function(value, metadata, record, rowIndex, colIndex, store) {
+      return record.get('repoType') == 'group' ? ('<b>' + value + '</b>') : value;
+    }
+  }, {
+    name : 'repoType',
+    header : 'Type',
+    width : 50
+  }, {
+    name : 'format',
+    header : 'Format',
+    width : 70
+  }, {
+    name : 'repoPolicy',
+    header : 'Policy',
+    width : 70,
+    convert : Sonatype.utils.upperFirstCharLowerRest
+  }, {
+    name : 'displayStatus',
+    header : 'Repository Status',
+    mapping : 'status',
+    convert : Sonatype.repoServer.DefaultRepoHandler.statusConverter,
+    width : 200
+  }, {
+    name : 'contentResourceURI',
+    header : 'Repository Path',
+    autoExpand : true,
+    renderer : function(s) {
+      return '<a href="' + s + ((s != null && (s.charAt(s.length)) == '/') ? '' : '/') + '" target="_blank">' + s + '</a>';
+    }
+  }];
+  
+  //allow plugins to contribute to the columns and toolbar
+  Sonatype.Events.fireEvent('repositoryGridInit', this, columns, toolbar);
 
   Sonatype.repoServer.RepositoryPanel.superclass.constructor.call(this, {
         addMenuInitEvent : 'repositoryAddMenuInit',
@@ -175,54 +220,11 @@ Sonatype.repoServer.RepositoryPanel = function(config) {
         dataAutoLoad : false,
         tabbedChildren : true,
         tbar : toolbar,
-        columns : [{
-              name : 'resourceURI'
-            }, {
-              name : 'remoteUri'
-            }, {
-              name : 'id'
-            }, {
-              name : 'exposed'
-            }, {
-              name : 'userManaged'
-            }, {
-              name : 'status'
-            }, {
-              name : 'name',
-              sortType : Ext.data.SortTypes.asUCString,
-              header : 'Repository',
-              width : 175,
-              renderer : function(value, metadata, record, rowIndex, colIndex, store) {
-                return record.get('repoType') == 'group' ? ('<b>' + value + '</b>') : value;
-              }
-            }, {
-              name : 'repoType',
-              header : 'Type',
-              width : 50
-            }, {
-              name : 'format',
-              header : 'Format',
-              width : 70
-            }, {
-              name : 'repoPolicy',
-              header : 'Policy',
-              width : 70,
-              convert : Sonatype.utils.upperFirstCharLowerRest
-            }, {
-              name : 'displayStatus',
-              header : 'Repository Status',
-              mapping : 'status',
-              convert : Sonatype.repoServer.DefaultRepoHandler.statusConverter,
-              width : 200
-            }, {
-              name : 'contentResourceURI',
-              header : 'Repository Path',
-              autoExpand : true,
-              renderer : function(s) {
-                return '<a href="' + s + ((s != null && (s.charAt(s.length)) == '/') ? '' : '/') + '" target="_blank">' + s + '</a>';
-              }
-            }]
+        columns : columns
       });
+  
+  //allow plugins to access the properly built panel object
+  Sonatype.Events.fireEvent('repositoryPanelInit', this);
 
   this.addListener('beforedestroy', function() {
         Ext.TaskMgr.stop(this.repoStatusTask);

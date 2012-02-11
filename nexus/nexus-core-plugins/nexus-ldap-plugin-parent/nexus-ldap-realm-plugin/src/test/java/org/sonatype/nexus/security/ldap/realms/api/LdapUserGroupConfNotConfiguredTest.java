@@ -1,45 +1,33 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.security.ldap.realms.api;
 
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.InputStreamReader;
-
-import org.junit.Assert;
-import org.junit.Test;
 
 import org.codehaus.plexus.context.Context;
-import org.codehaus.plexus.util.xml.pull.XmlPullParserException;
-import org.sonatype.nexus.AbstractNexusTestCase;
+import org.junit.Assert;
+import org.junit.Test;
+import org.sonatype.nexus.AbstractNexusLdapTestCase;
 import org.sonatype.nexus.security.ldap.realms.api.dto.LdapUserAndGroupConfigurationDTO;
 import org.sonatype.nexus.security.ldap.realms.api.dto.LdapUserAndGroupConfigurationResponse;
 import org.sonatype.plexus.rest.resource.PlexusResource;
-
 import org.sonatype.security.ldap.realms.persist.model.CUserAndGroupAuthConfiguration;
 import org.sonatype.security.ldap.realms.persist.model.Configuration;
 import org.sonatype.security.ldap.realms.persist.model.io.xpp3.LdapConfigurationXpp3Reader;
 
 public class LdapUserGroupConfNotConfiguredTest
-    extends AbstractNexusTestCase
+    extends AbstractNexusLdapTestCase
 {
 
     private PlexusResource getResource()
@@ -83,7 +71,8 @@ public class LdapUserGroupConfNotConfiguredTest
     private void validateConfigFile( LdapUserAndGroupConfigurationDTO dto )
         throws Exception
     {
-        String configFileName = CONF_HOME.getAbsolutePath() + "/no-conf" + "/ldap.xml";// this.getNexusLdapConfiguration();
+        // this.getNexusLdapConfiguration();
+        String configFileName = getLdapXml().getAbsolutePath();
 
         LdapConfigurationXpp3Reader reader = new LdapConfigurationXpp3Reader();
         FileInputStream fis = new FileInputStream( configFileName );
@@ -143,26 +132,17 @@ public class LdapUserGroupConfNotConfiguredTest
         this.validateConfigFile( userGroupConf );
     }
 
-    /*
-     * (non-Javadoc)
-     * @see com.sonatype.nexus.AbstractNexusTestCase#customizeContext(org.codehaus.plexus.context.Context)
-     */
     @Override
     protected void customizeContext( Context ctx )
     {
         super.customizeContext( ctx );
 
-        ctx.put( LDAP_CONFIGURATION_KEY, CONF_HOME.getAbsolutePath() + "/no-conf/" );
+        ctx.put( CONF_DIR_KEY, getLdapXml().getParentFile().getAbsolutePath() );
     }
 
-    public void tearDown()
-        throws Exception
+    private File getLdapXml()
     {
-        super.tearDown();
-
-        // delete the ldap.xml file
-        File confFile = new File( CONF_HOME.getAbsolutePath() + "/no-conf/", "ldap.xml" );
-        confFile.delete();
+        return new File( getConfHomeDir(), "no-conf/ldap.xml" );
     }
 
 }

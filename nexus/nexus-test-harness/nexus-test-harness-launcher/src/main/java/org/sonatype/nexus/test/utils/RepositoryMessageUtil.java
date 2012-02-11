@@ -1,97 +1,91 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.test.utils;
+
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.not;
+import static org.sonatype.nexus.test.utils.NexusRequestMatchers.inError;
+import static org.sonatype.nexus.test.utils.NexusRequestMatchers.isSuccessful;
 
 import java.io.IOException;
 import java.util.List;
 
-import org.apache.log4j.Logger;
 import org.restlet.data.MediaType;
 import org.restlet.data.Method;
 import org.restlet.data.Response;
-import org.restlet.data.Status;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.sonatype.nexus.configuration.model.CRepository;
 import org.sonatype.nexus.integrationtests.AbstractNexusIntegrationTest;
 import org.sonatype.nexus.integrationtests.RequestFacade;
 import org.sonatype.nexus.proxy.maven.maven2.M2LayoutedM1ShadowRepositoryConfiguration;
 import org.sonatype.nexus.proxy.maven.maven2.M2RepositoryConfiguration;
-import org.sonatype.nexus.proxy.repository.Repository;
-import org.sonatype.nexus.proxy.repository.ShadowRepository;
 import org.sonatype.nexus.rest.model.ContentListResourceResponse;
 import org.sonatype.nexus.rest.model.RepositoryBaseResource;
 import org.sonatype.nexus.rest.model.RepositoryListResource;
-import org.sonatype.nexus.rest.model.RepositoryListResourceResponse;
 import org.sonatype.nexus.rest.model.RepositoryResource;
 import org.sonatype.nexus.rest.model.RepositoryResourceResponse;
 import org.sonatype.nexus.rest.model.RepositoryShadowResource;
 import org.sonatype.nexus.rest.model.RepositoryStatusResource;
-import org.sonatype.nexus.rest.model.RepositoryStatusResourceResponse;
 import org.sonatype.plexus.rest.representation.XStreamRepresentation;
 import org.testng.Assert;
-
 import com.thoughtworks.xstream.XStream;
 
 public class RepositoryMessageUtil
     extends ITUtil
 {
-    public static final String ALL_SERVICE_PART = RequestFacade.SERVICE_LOCAL + "all_repositories";
 
-    public static final String SERVICE_PART = RequestFacade.SERVICE_LOCAL + "repositories";
+    public static final String ALL_SERVICE_PART = RepositoriesNexusRestClient.ALL_SERVICE_PART;
 
-    private XStream xstream;
+    public static final String SERVICE_PART = RepositoriesNexusRestClient.SERVICE_PART;
 
-    private MediaType mediaType;
+    private static final Logger LOG = LoggerFactory.getLogger( RepositoryMessageUtil.class );
 
-    private static final Logger LOG = Logger.getLogger( RepositoryMessageUtil.class );
+    private static final RepositoriesNexusRestClient REPOSITORY_NRC = new RepositoriesNexusRestClient(
+        RequestFacade.getNexusRestClient(),
+        new TasksNexusRestClient( RequestFacade.getNexusRestClient() ),
+        new EventInspectorsUtil( RequestFacade.getNexusRestClient() )
+    );
+
+    private final RepositoriesNexusRestClient repositoryNRC;
 
     public RepositoryMessageUtil( AbstractNexusIntegrationTest test, XStream xstream, MediaType mediaType )
     {
         super( test );
-        this.xstream = xstream;
-        this.mediaType = mediaType;
+        repositoryNRC = new RepositoriesNexusRestClient(
+            RequestFacade.getNexusRestClient(),
+            new TasksNexusRestClient( RequestFacade.getNexusRestClient() ),
+            test.getEventInspectorsUtil(),
+            xstream,
+            mediaType
+        );
     }
 
     public RepositoryBaseResource createRepository( RepositoryBaseResource repo )
         throws IOException
     {
-        return createRepository( repo, true );
+        return repositoryNRC.createRepository( repo );
     }
 
     public RepositoryBaseResource createRepository( RepositoryBaseResource repo, boolean validate )
         throws IOException
     {
-        Response response = this.sendMessage( Method.POST, repo );
-
-        if ( !response.getStatus().isSuccess() )
-        {
-            String responseText = response.getEntity().getText();
-            Assert.fail( "Could not create Repository: " + response.getStatus() + ":\n" + responseText );
-        }
-
-        RepositoryBaseResource responseResource = this.getRepositoryBaseResourceFromResponse( response );
-
+        final RepositoryBaseResource resource = repositoryNRC.createRepository( repo );
         if ( validate )
         {
-            this.validateResourceResponse( repo, responseResource );
+            validateResourceResponse( repo, resource );
         }
-
-        return responseResource;
+        return resource;
     }
 
     public void validateResourceResponse( RepositoryBaseResource repo, RepositoryBaseResource responseResource )
@@ -125,15 +119,17 @@ public class RepositoryMessageUtil
             if ( actual.getDefaultLocalStorageUrl().endsWith( "/" ) )
             {
                 Assert.assertTrue( actual.getDefaultLocalStorageUrl().endsWith( "/storage/" + repo.getId() + "/" ),
-                    "Unexpected defaultLocalStorage: <expected to end with> " + "/storage/" + repo.getId()
-                        + "/  <actual>" + actual.getDefaultLocalStorageUrl() );
+                                   "Unexpected defaultLocalStorage: <expected to end with> " + "/storage/"
+                                       + repo.getId()
+                                       + "/  <actual>" + actual.getDefaultLocalStorageUrl() );
             }
             // NOTE one of these blocks should be removed
             else
             {
                 Assert.assertTrue( actual.getDefaultLocalStorageUrl().endsWith( "/storage/" + repo.getId() ),
-                    "Unexpected defaultLocalStorage: <expected to end with> " + "/storage/" + repo.getId()
-                        + "  <actual>" + actual.getDefaultLocalStorageUrl() );
+                                   "Unexpected defaultLocalStorage: <expected to end with> " + "/storage/"
+                                       + repo.getId()
+                                       + "  <actual>" + actual.getDefaultLocalStorageUrl() );
             }
 
             Assert.assertEquals( expected.getNotFoundCacheTTL(), actual.getNotFoundCacheTTL() );
@@ -146,7 +142,7 @@ public class RepositoryMessageUtil
             else
             {
                 Assert.assertEquals( expected.getRemoteStorage().getRemoteStorageUrl(),
-                    actual.getRemoteStorage().getRemoteStorageUrl() );
+                                     actual.getRemoteStorage().getRemoteStorageUrl() );
             }
 
             Assert.assertEquals( expected.getRepoPolicy(), actual.getRepoPolicy() );
@@ -159,14 +155,8 @@ public class RepositoryMessageUtil
     public RepositoryBaseResource getRepository( String repoId )
         throws IOException
     {
-
-        Response response = RequestFacade.doGetRequest( SERVICE_PART + "/" + repoId );
-        String responseText = response.getEntity().getText();
-        if ( response.getStatus().isError() )
-        {
-            Assert.fail( "Error on request: " + response.getStatus() + "\n" + responseText );
-        }
-
+        // accepted return codes: OK or redirect
+        final String responseText = RequestFacade.doGetForText( SERVICE_PART + "/" + repoId, not( inError() ) );
         LOG.debug( "responseText: \n" + responseText );
 
         // this should use call to: getResourceFromResponse
@@ -188,15 +178,19 @@ public class RepositoryMessageUtil
     public RepositoryBaseResource updateRepo( RepositoryBaseResource repo, boolean validate )
         throws IOException
     {
-        Response response = this.sendMessage( Method.PUT, repo );
 
-        if ( !response.getStatus().isSuccess() )
+        Response response = null;
+        RepositoryBaseResource responseResource;
+        try
         {
-            String responseText = response.getEntity().getText();
-            Assert.fail( "Could not update user: " + response.getStatus() + "\n" + responseText );
+            response = this.sendMessage( Method.PUT, repo );
+            assertThat( "Could not update user", response, isSuccessful() );
+            responseResource = this.getRepositoryBaseResourceFromResponse( response );
         }
-
-        RepositoryBaseResource responseResource = this.getRepositoryBaseResourceFromResponse( response );
+        finally
+        {
+            RequestFacade.releaseResponse( response );
+        }
 
         if ( validate )
         {
@@ -206,98 +200,52 @@ public class RepositoryMessageUtil
         return responseResource;
     }
 
+    /**
+     * IMPORTANT: Make sure to release the Response in a finally block when you are done with it.
+     */
     public Response sendMessage( Method method, RepositoryBaseResource resource, String id )
         throws IOException
     {
-        if ( resource != null && resource.getProviderRole() == null )
-        {
-            if ( "virtual".equals( resource.getRepoType() ) )
-            {
-                resource.setProviderRole( ShadowRepository.class.getName() );
-            }
-            else
-            {
-                resource.setProviderRole( Repository.class.getName() );
-            }
-        }
-
-        XStreamRepresentation representation = new XStreamRepresentation( xstream, "", mediaType );
-
-        String idPart = ( method == Method.POST ) ? "" : "/" + id;
-
-        String serviceURI = SERVICE_PART + idPart;
-
-        RepositoryResourceResponse repoResponseRequest = new RepositoryResourceResponse();
-        repoResponseRequest.setData( resource );
-
-        // now set the payload
-        representation.setPayload( repoResponseRequest );
-
-        LOG.debug( "sendMessage: " + representation.getText() );
-
-        return RequestFacade.sendMessage( serviceURI, method, representation );
+        return repositoryNRC.sendMessage( method, resource, id );
     }
 
+    /**
+     * IMPORTANT: Make sure to release the Response in a finally block when you are done with it.
+     */
     public Response sendMessage( Method method, RepositoryBaseResource resource )
         throws IOException
     {
-        return this.sendMessage( method, resource, resource.getId() );
+        return repositoryNRC.sendMessage( method, resource );
     }
 
     /**
      * This should be replaced with a REST Call, but the REST client does not set the Accept correctly on GET's/
-     * 
+     *
      * @return
      * @throws IOException
      */
     public List<RepositoryListResource> getList()
         throws IOException
     {
-        String responseText = RequestFacade.doGetRequest( SERVICE_PART ).getEntity().getText();
-        LOG.debug( "responseText: \n" + responseText );
-
-        XStreamRepresentation representation =
-            new XStreamRepresentation( XStreamFactory.getXmlXStream(), responseText, MediaType.APPLICATION_XML );
-
-        RepositoryListResourceResponse resourceResponse =
-            (RepositoryListResourceResponse) representation.getPayload( new RepositoryListResourceResponse() );
-
-        return resourceResponse.getData();
-
+        return repositoryNRC.getList();
     }
 
     public List<RepositoryListResource> getAllList()
         throws IOException
     {
-        String responseText = RequestFacade.doGetRequest( ALL_SERVICE_PART ).getEntity().getText();
-        LOG.debug( "responseText: \n" + responseText );
-
-        XStreamRepresentation representation =
-            new XStreamRepresentation( XStreamFactory.getXmlXStream(), responseText, MediaType.APPLICATION_XML );
-
-        RepositoryListResourceResponse resourceResponse =
-            (RepositoryListResourceResponse) representation.getPayload( new RepositoryListResourceResponse() );
-
-        return resourceResponse.getData();
+        return repositoryNRC.getAllList();
     }
 
     public RepositoryBaseResource getRepositoryBaseResourceFromResponse( Response response )
         throws IOException
     {
-        String responseString = response.getEntity().getText();
-        LOG.debug( " getRepositoryBaseResourceFromResponse: " + responseString );
-
-        XStreamRepresentation representation = new XStreamRepresentation( xstream, responseString, mediaType );
-        RepositoryResourceResponse resourceResponse =
-            (RepositoryResourceResponse) representation.getPayload( new RepositoryResourceResponse() );
-
-        return resourceResponse.getData();
+        return repositoryNRC.getRepositoryBaseResourceFromResponse( response );
     }
 
     public RepositoryResource getResourceFromResponse( Response response )
         throws IOException
     {
-        return (RepositoryResource) getRepositoryBaseResourceFromResponse( response );
+        return repositoryNRC.getResourceFromResponse( response );
     }
 
     private void validateRepoInNexusConfig( RepositoryBaseResource repo )
@@ -348,7 +296,7 @@ public class RepositoryMessageUtil
             if ( expected.getOverrideLocalStorageUrl() == null )
             {
                 Assert.assertNull( cRepo.getLocalStorage().getUrl(),
-                    "Expected CRepo localstorage url not be set, because it is the default." );
+                                   "Expected CRepo localstorage url not be set, because it is the default." );
             }
             else
             {
@@ -368,7 +316,7 @@ public class RepositoryMessageUtil
             else
             {
                 Assert.assertEquals( expected.getRemoteStorage().getRemoteStorageUrl(),
-                    cRepo.getRemoteStorage().getUrl() );
+                                     cRepo.getRemoteStorage().getUrl() );
             }
 
             // check maven repo props (for not just check everything that is a Repository
@@ -390,85 +338,31 @@ public class RepositoryMessageUtil
     public static void updateIndexes( String... repositories )
         throws Exception
     {
-        reindex( repositories, false );
-    }
-
-    private static void reindex( String[] repositories, boolean incremental )
-        throws IOException, Exception
-    {
-        for ( String repo : repositories )
-        {
-            String serviceURI;
-            if ( incremental )
-            {
-                serviceURI = "service/local/data_incremental_index/repositories/" + repo + "/content";
-            }
-            else
-            {
-                serviceURI = "service/local/data_index/repositories/" + repo + "/content";
-            }
-
-            Response response = RequestFacade.sendMessage( serviceURI, Method.DELETE );
-            Status status = response.getStatus();
-            Assert.assertTrue( status.isSuccess(), "Fail to update " + repo + " repository index " + status );
-        }
-
-        // let s w8 a few time for indexes
-        TaskScheduleUtil.waitForAllTasksToStop();
+        REPOSITORY_NRC.updateIndexes( repositories );
     }
 
     public static void updateIncrementalIndexes( String... repositories )
         throws Exception
     {
-        reindex( repositories, true );
+        REPOSITORY_NRC.updateIncrementalIndexes( repositories );
     }
 
     public RepositoryStatusResource getStatus( String repoId )
         throws IOException
     {
-        return getStatus( repoId, false );
+        return repositoryNRC.getStatus( repoId );
     }
 
     public RepositoryStatusResource getStatus( String repoId, boolean force )
         throws IOException
     {
-
-        String uri = SERVICE_PART + "/" + repoId + "/status";
-
-        if ( force )
-        {
-            uri = uri + "?forceCheck=true";
-        }
-
-        Response response = RequestFacade.sendMessage( uri, Method.GET );
-        Status status = response.getStatus();
-        Assert.assertTrue( status.isSuccess(), "Fail to getStatus for '" + repoId + "' repository" + status );
-
-        XStreamRepresentation representation =
-            new XStreamRepresentation( this.xstream, response.getEntity().getText(), MediaType.APPLICATION_XML );
-
-        RepositoryStatusResourceResponse resourceResponse =
-            (RepositoryStatusResourceResponse) representation.getPayload( new RepositoryStatusResourceResponse() );
-
-        return resourceResponse.getData();
+        return repositoryNRC.getStatus( repoId, force );
     }
 
     public void updateStatus( RepositoryStatusResource repoStatus )
         throws IOException
     {
-        String uriPart = SERVICE_PART + "/" + repoStatus.getId() + "/status";
-
-        XStreamRepresentation representation = new XStreamRepresentation( this.xstream, "", MediaType.APPLICATION_XML );
-        RepositoryStatusResourceResponse resourceResponse = new RepositoryStatusResourceResponse();
-        resourceResponse.setData( repoStatus );
-        representation.setPayload( resourceResponse );
-
-        Response response = RequestFacade.sendMessage( uriPart, Method.PUT, representation );
-        Status status = response.getStatus();
-        Assert.assertTrue( status.isSuccess(),
-            "Fail to update '" + repoStatus.getId() + "' repository status " + status + "\nResponse:\n"
-                + response.getEntity().getText() + "\nrepresentation:\n" + representation.getText() );
-
+        repositoryNRC.updateStatus( repoStatus );
     }
 
     /**
@@ -480,18 +374,35 @@ public class RepositoryMessageUtil
     public static ContentListResourceResponse downloadRepoIndexContent( String repoId )
         throws IOException
     {
-        String serviceURI = "service/local/repositories/" + repoId + "/index_content/";
-
-        Response response = RequestFacade.doGetRequest( serviceURI );
-        String responseText = response.getEntity().getText();
-        Status status = response.getStatus();
-        Assert.assertTrue( status.isSuccess(), responseText + status );
-
-        XStreamRepresentation re =
-            new XStreamRepresentation( XStreamFactory.getXmlXStream(), responseText, MediaType.APPLICATION_XML );
-        ContentListResourceResponse resourceResponse =
-            (ContentListResourceResponse) re.getPayload( new ContentListResourceResponse() );
-
-        return resourceResponse;
+        return REPOSITORY_NRC.downloadRepoIndexContent( repoId );
     }
+
+    /**
+     * Change block proxy state.<BR>
+     * this method only return after all Tasks and Asynchronous events to finish
+     *
+     * @param repoId
+     * @param block
+     * @throws Exception
+     */
+    public void setBlockProxy( final String repoId, final boolean block )
+        throws Exception
+    {
+        repositoryNRC.setBlockProxy( repoId, block );
+    }
+
+    /**
+     * Change block out of service state.<BR>
+     * this method only return after all Tasks and Asynchronous events to finish
+     *
+     * @param repoId
+     * @param outOfService
+     * @throws Exception
+     */
+    public void setOutOfServiceProxy( final String repoId, final boolean outOfService )
+        throws Exception
+    {
+        repositoryNRC.setOutOfServiceProxy( repoId, outOfService );
+    }
+
 }

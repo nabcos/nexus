@@ -1,20 +1,14 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.proxy.maven.maven2;
 
@@ -22,28 +16,23 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
 
 import org.apache.maven.artifact.repository.metadata.Metadata;
-import org.apache.maven.index.artifact.GavCalculator;
-import org.apache.maven.index.artifact.M2ArtifactRecognizer;
-import org.apache.maven.index.artifact.VersionUtils;
 import org.codehaus.plexus.component.annotations.Component;
 import org.codehaus.plexus.component.annotations.Requirement;
 import org.codehaus.plexus.util.IOUtil;
 import org.codehaus.plexus.util.xml.Xpp3Dom;
-import org.sonatype.nexus.artifact.NexusItemInfo;
 import org.sonatype.nexus.configuration.Configurator;
 import org.sonatype.nexus.configuration.model.CRepository;
 import org.sonatype.nexus.configuration.model.CRepositoryExternalConfigurationHolderFactory;
-import org.sonatype.nexus.feeds.NexusArtifactEvent;
 import org.sonatype.nexus.proxy.IllegalOperationException;
 import org.sonatype.nexus.proxy.ItemNotFoundException;
 import org.sonatype.nexus.proxy.LocalStorageException;
 import org.sonatype.nexus.proxy.ResourceStoreRequest;
 import org.sonatype.nexus.proxy.StorageException;
+import org.sonatype.nexus.proxy.events.RepositoryItemValidationEvent;
 import org.sonatype.nexus.proxy.item.ByteArrayContentLocator;
 import org.sonatype.nexus.proxy.item.ContentLocator;
 import org.sonatype.nexus.proxy.item.DefaultStorageCompositeFileItem;
@@ -53,7 +42,11 @@ import org.sonatype.nexus.proxy.item.StorageFileItem;
 import org.sonatype.nexus.proxy.item.StorageItem;
 import org.sonatype.nexus.proxy.maven.AbstractMavenGroupRepository;
 import org.sonatype.nexus.proxy.maven.MavenRepository;
+import org.sonatype.nexus.proxy.maven.MavenRepositoryMetadataValidationEventFailed;
 import org.sonatype.nexus.proxy.maven.RepositoryPolicy;
+import org.sonatype.nexus.proxy.maven.gav.Gav;
+import org.sonatype.nexus.proxy.maven.gav.GavCalculator;
+import org.sonatype.nexus.proxy.maven.gav.M2ArtifactRecognizer;
 import org.sonatype.nexus.proxy.maven.metadata.operations.MetadataBuilder;
 import org.sonatype.nexus.proxy.maven.metadata.operations.MetadataException;
 import org.sonatype.nexus.proxy.maven.metadata.operations.MetadataOperand;
@@ -197,7 +190,7 @@ public class M2GroupRepository
         for ( Iterator<String> it = versions.iterator(); it.hasNext(); )
         {
             String version = it.next();
-            if ( allowSnapshot ^ VersionUtils.isSnapshot( version ) )
+            if ( allowSnapshot ^ Gav.isSnapshot( version ) )
             {
                 it.remove();
             }
@@ -251,7 +244,7 @@ public class M2GroupRepository
                         "IOException during parse of metadata UID=\"" + fileItem.getRepositoryItemUid().toString()
                             + "\", will be skipped from aggregation!", e );
 
-                    getFeedRecorder().addNexusArtifactEvent(
+                    getApplicationEventMulticaster().notifyEventListeners(
                         newMetadataFailureEvent( fileItem,
                             "Invalid metadata served by repository. If repository is proxy, please check out what is it serving!" ) );
                 }
@@ -261,7 +254,7 @@ public class M2GroupRepository
                         "Metadata exception during parse of metadata from UID=\""
                             + fileItem.getRepositoryItemUid().toString() + "\", will be skipped from aggregation!", e );
 
-                    getFeedRecorder().addNexusArtifactEvent(
+                    getApplicationEventMulticaster().notifyEventListeners(
                         newMetadataFailureEvent( fileItem,
                             "Invalid metadata served by repository. If repository is proxy, please check out what is it serving!" ) );
                 }
@@ -332,7 +325,7 @@ public class M2GroupRepository
         String digestFileName = request.getRequestPath() + "." + algorithm.toLowerCase();
 
         // see nexus-configuration mime-types.properties (defaulted to text/plain, as central reports them)
-        String mimeType = getMimeUtil().getMimeType( digestFileName );
+        String mimeType = getMimeSupport().guessMimeTypeFromPath( getMimeRulesSource(), digestFileName );
 
         byte[] bytes = ( digest + '\n' ).getBytes( "UTF-8" );
 
@@ -354,7 +347,7 @@ public class M2GroupRepository
     {
         // we are creating file maven-metadata.xml, and ask the MimeUtil for it's exact MIME type to honor potential
         // user configuration
-        String mimeType = getMimeUtil().getMimeType( "maven-metadata.xml" );
+        String mimeType = getMimeSupport().guessMimeTypeFromPath( getMimeRulesSource(), "maven-metadata.xml" );
 
         ContentLocator contentLocator = new ByteArrayContentLocator( content, mimeType );
 
@@ -382,24 +375,8 @@ public class M2GroupRepository
         return result;
     }
 
-    // TODO: clean up this! This is a copy+paste from org.sonatype.nexus.proxy.maven.ChecksumContentValidator
-    // centralize this!
-    private NexusArtifactEvent newMetadataFailureEvent( StorageFileItem item, String msg )
+    private RepositoryItemValidationEvent newMetadataFailureEvent( StorageFileItem item, String msg )
     {
-        NexusItemInfo ai = new NexusItemInfo();
-
-        ai.setPath( item.getPath() );
-
-        ai.setRepositoryId( item.getRepositoryId() );
-
-        ai.setRemoteUrl( item.getRemoteUrl() );
-
-        NexusArtifactEvent nae = new NexusArtifactEvent( new Date(), NexusArtifactEvent.ACTION_BROKEN, msg, ai );
-
-        nae.addEventContext( item.getItemContext() );
-        
-        nae.addItemAttributes( item.getAttributes() );
-
-        return nae;
+        return new MavenRepositoryMetadataValidationEventFailed( this, item, msg );
     }
 }

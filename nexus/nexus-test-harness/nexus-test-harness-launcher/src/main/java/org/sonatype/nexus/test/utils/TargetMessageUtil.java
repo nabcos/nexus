@@ -1,37 +1,33 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.test.utils;
 
-import java.io.IOException;
+import static org.hamcrest.MatcherAssert.*;
+import static org.sonatype.nexus.test.utils.NexusRequestMatchers.*;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 
-
-import org.apache.log4j.Logger;
 import org.codehaus.plexus.util.StringUtils;
 import org.restlet.data.MediaType;
 import org.restlet.data.Method;
 import org.restlet.data.Response;
 import org.restlet.data.Status;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.sonatype.nexus.configuration.model.CRepositoryTarget;
 import org.sonatype.nexus.configuration.model.Configuration;
 import org.sonatype.nexus.integrationtests.AbstractNexusIntegrationTest;
@@ -52,7 +48,7 @@ public class TargetMessageUtil
 
     private MediaType mediaType;
 
-    private static final Logger LOG = Logger.getLogger( TargetMessageUtil.class );
+    private static final Logger LOG = LoggerFactory.getLogger( TargetMessageUtil.class );
 
     public TargetMessageUtil( AbstractNexusIntegrationTest test, XStream xstream, MediaType mediaType )
     {
@@ -70,14 +66,18 @@ public class TargetMessageUtil
     public RepositoryTargetResource saveTarget( RepositoryTargetResource target, boolean update )
         throws IOException
     {
-        Response response = this.sendMessage( update ? Method.PUT : Method.POST, target );
-        String responseText = response.getEntity().getText();
-
-        Assert.assertTrue( response.getStatus().isSuccess(), "Could not save Repository Target: " + response.getStatus() + "\nResponse Text:\n"
-                + responseText + "\n" + xstream.toXML( target ) );
+        Response response = null;
+        String entityText;
+        try {
+            response = this.sendMessage( update ? Method.PUT : Method.POST, target );
+            entityText = response.getEntity().getText();
+            assertThat(response, isSuccessful());
+        } finally {
+            RequestFacade.releaseResponse(response);
+        }
 
         // get the Resource object
-        RepositoryTargetResource responseResource = this.getResourceFromResponse( responseText );
+        RepositoryTargetResource responseResource = this.getResourceFromResponse( entityText );
 
         // validate
         // make sure the id != null
@@ -95,7 +95,9 @@ public class TargetMessageUtil
 
         return responseResource;
     }
-
+    /**
+     * IMPORTANT: Make sure to release the Response in a finally block when you are done with it.
+     */
     public Response sendMessage( Method method, RepositoryTargetResource resource )
         throws IOException
     {
@@ -119,7 +121,7 @@ public class TargetMessageUtil
         throws IOException
     {
 
-        String responseText = RequestFacade.doGetRequest( "service/local/repo_targets" ).getEntity().getText();
+        String responseText = RequestFacade.doGetForText( "service/local/repo_targets" );
         LOG.debug( "responseText: \n" + responseText );
 
         XStreamRepresentation representation =
@@ -283,8 +285,7 @@ public class TargetMessageUtil
     public static RepositoryTargetResource get( String targetId )
         throws IOException
     {
-        String responseText =
-            RequestFacade.doGetRequest( "service/local/repo_targets/" + targetId ).getEntity().getText();
+        String responseText = RequestFacade.doGetForText("service/local/repo_targets/" + targetId);
         LOG.debug( "responseText: \n" + responseText );
 
         XStreamRepresentation representation =
@@ -296,10 +297,15 @@ public class TargetMessageUtil
         return resourceResponse.getData();
     }
 
-    public static Response delete( String targetId )
+    /**
+     * Deletes the target id and ensures the delete was successful
+     * @param targetId
+     * @throws IOException
+     */
+    public static void delete( String targetId )
         throws IOException
     {
-        return RequestFacade.sendMessage( "service/local/repo_targets/" + targetId, Method.DELETE );
+        RequestFacade.doDelete("service/local/repo_targets/" + targetId, isSuccessful());
     }
 
 }

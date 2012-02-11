@@ -1,20 +1,14 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.security;
 
@@ -34,6 +28,7 @@ import org.sonatype.nexus.proxy.events.RepositoryRegistryEventRemove;
 import org.sonatype.nexus.proxy.registry.ContentClass;
 import org.sonatype.nexus.proxy.registry.RepositoryRegistry;
 import org.sonatype.nexus.proxy.registry.RepositoryTypeRegistry;
+import org.sonatype.nexus.proxy.registry.RootContentClass;
 import org.sonatype.nexus.proxy.repository.Repository;
 import org.sonatype.plexus.appevents.ApplicationEventMulticaster;
 import org.sonatype.plexus.appevents.Event;
@@ -97,11 +92,17 @@ public class NexusViewSecurityResource
         CRole view = new CRole();
         view.setId( content + "-all-" + method );
 
-        content = StringUtils.capitalizeFirstLetter( content );
-        view.setDescription( "Gives access to " + method + " ALL " + content + " Repositories in Nexus." );
+        String contentClassName = entry.getValue().getName();
+        if ( entry.getValue() instanceof RootContentClass )
+        {
+            // NXCM-3544 set name to empty string to generate 'All Repositories' role name/description
+            contentClassName = "";
+        }
+
+        view.setDescription( "Gives access to " + method + " ALL " + contentClassName + " Repositories in Nexus." );
 
         method = StringUtils.capitalizeFirstLetter( method );
-        view.setName( "Repo: All Eclipse " + content + " Repositories (" + method + ")" );
+        view.setName( "Repo: All " + contentClassName + " Repositories (" + method + ")" );
         view.setSessionTimeout( 60 );
 
         List<? extends Repository> repos = getRepositoriesWithContentClass( entry.getValue() );

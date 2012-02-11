@@ -1,22 +1,18 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.proxy.attributes;
+
+import java.io.IOException;
 
 import org.sonatype.nexus.proxy.ItemNotFoundException;
 import org.sonatype.nexus.proxy.LocalStorageException;
@@ -27,100 +23,139 @@ import org.sonatype.nexus.proxy.item.StorageItem;
 import org.sonatype.nexus.proxy.repository.Repository;
 
 /**
- * The Interface AttributesHandler. Used to decorate the items.
+ * AttributesHandler manages the storage of item attributes, does their recalculation if needed (how it's done is left
+ * to implementation) and offers some "shortcut" methods to perform updates on some (core used) attributes like
+ * "lastRequested" and other. All {@link org.sonatype.nexus.proxy.item.StorageCollectionItem} types does not have
+ * persisted attributes, and handler will simply not handle them.
  * 
  * @author cstamas
  */
 public interface AttributesHandler
 {
+
+    /**
+     * Returns the AttributeStorage used by this AttributesHandler instance.
+     * 
+     * @return AttributeStorage used by this instance.
+     */
     AttributeStorage getAttributeStorage();
 
+    /**
+     * Sets the attribute storage used by this instance.
+     * 
+     * @param attributeStorage
+     * @deprecated For UT uses only!
+     */
+    @Deprecated
     void setAttributeStorage( AttributeStorage attributeStorage );
 
     /**
-     * Fetches the item attributes and decorates the supplied item.
+     * Fetches the item attributes and decorates the supplied item instance with it.
      * 
-     * @param item the item
-     * @return Map of attributes or empty map if none found.
+     * @param item the item to have attributes loaded up and decorated with.
      */
-    void fetchAttributes( StorageItem item );
+    void fetchAttributes( StorageItem item )
+        throws IOException;
 
     /**
-     * Creates the item attributes and stores them.
+     * Stores the item attributes. If non-null content locator is supplied, attributes will be recalculated before
+     * saving.
      * 
      * @param item the item
-     * @param inputStream the input stream
+     * @param content the content of the item if we deal with StorageFileItem
      */
-    void storeAttributes( StorageItem item, ContentLocator content );
+    void storeAttributes( StorageItem item, ContentLocator content )
+        throws IOException;
 
     /**
-     * Removes the item attributes.
+     * Stores item attributes, as-is, will not try attribute expansion either.
+     * 
+     * @param item the item
+     */
+    void storeAttributes( StorageItem item )
+        throws IOException;
+
+    /**
+     * Removes the item attributes from attribute storage.
      * 
      * @param uid the uid
      * @return true if attributes are found and deleted, false otherwise.
      */
-    boolean deleteAttributes( RepositoryItemUid uid );
+    boolean deleteAttributes( RepositoryItemUid uid )
+        throws IOException;
+
+    /**
+     * Sets the storageItem's "checkedRemotely" attribute (a timestamp in millis) to the passed in one and persists the
+     * modified attributes.
+     * 
+     * @param timestamp
+     * @param storageItem
+     */
+    void touchItemCheckedRemotely( long timestamp, StorageItem storageItem )
+        throws IOException;
+
+    /**
+     * Sets the storageItem's "lastRequested" attribute (a timestamp in millis) to the passed in one and persists the
+     * modified attributes.
+     * 
+     * @param timestamp
+     * @param storageItem
+     */
+    void touchItemLastRequested( long timestamp, StorageItem storageItem )
+        throws IOException;
 
     // ==
 
     /**
-     * Touch item and sets on it the current time.
+     * Updates the "checkedRemotely" attribute of item in given repository Touch item and sets on it the current time.
      * 
-     * @param uid the uid
-     * @throws LocalStorageException the storage exception
+     * @deprecated Use {@link #touchItemCheckedRemotely(long, org.sonatype.nexus.proxy.item.StorageItem)} instead.
      */
+    @Deprecated
     void touchItemRemoteChecked( Repository repository, ResourceStoreRequest request )
-        throws ItemNotFoundException, LocalStorageException;
+        throws ItemNotFoundException, LocalStorageException, IOException;
 
     /**
      * Touch item and sets on it the given timestamp.
      * 
-     * @param uid the uid
-     * @param timestamp the ts to set on file, 0 to "expire" it
-     * @throws LocalStorageException the storage exception
+     * @deprecated Use {@link #touchItemCheckedRemotely(long, org.sonatype.nexus.proxy.item.StorageItem)} instead.
      */
+    @Deprecated
     void touchItemRemoteChecked( long timestamp, Repository repository, ResourceStoreRequest request )
-        throws ItemNotFoundException, LocalStorageException;
+        throws ItemNotFoundException, LocalStorageException, IOException;
 
     /**
      * Touch item last requested and sets on it the current time.
      * 
-     * @param uid the uid
-     * @throws LocalStorageException the storage exception
+     * @deprecated Use {@link #touchItemLastRequested(long, org.sonatype.nexus.proxy.item.StorageItem)} instead.
      */
+    @Deprecated
     void touchItemLastRequested( Repository repository, ResourceStoreRequest request )
-        throws ItemNotFoundException, LocalStorageException;
+        throws ItemNotFoundException, LocalStorageException, IOException;
 
     /**
      * Touch item last requested and sets on it the given timestamp.
      * 
-     * @param uid the uid
-     * @param timestamp the ts to set on file, 0 to "expire" it
-     * @throws LocalStorageException the storage exception
+     * @deprecated Use {@link #touchItemLastRequested(long, org.sonatype.nexus.proxy.item.StorageItem)} instead.
      */
     void touchItemLastRequested( long timestamp, Repository repository, ResourceStoreRequest request )
-        throws ItemNotFoundException, LocalStorageException;
+        throws ItemNotFoundException, LocalStorageException, IOException;
 
     /**
      * Touch only if request is user-request (coming from outside of nexus).
      * 
-     * @param timestamp
-     * @param repository
-     * @param request
-     * @param storageItem
-     * @throws ItemNotFoundException
-     * @throws LocalStorageException
+     * @deprecated Use {@link #touchItemLastRequested(long, org.sonatype.nexus.proxy.item.StorageItem)} instead.
      */
     void touchItemLastRequested( long timestamp, Repository repository, ResourceStoreRequest request,
                                  StorageItem storageItem )
-        throws ItemNotFoundException, LocalStorageException;
+        throws ItemNotFoundException, LocalStorageException, IOException;
 
     /**
      * Update item attributes, does not modify the content of it.
      * 
-     * @param item the item
-     * @throws LocalStorageException the storage exception
+     * @deprecated Use {@link #storeAttributes(org.sonatype.nexus.proxy.item.StorageItem)} instead!
      */
+    @Deprecated
     void updateItemAttributes( Repository repository, ResourceStoreRequest request, StorageItem item )
-        throws ItemNotFoundException, LocalStorageException;
+        throws ItemNotFoundException, LocalStorageException, IOException;
 }

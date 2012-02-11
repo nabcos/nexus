@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <nexusConfiguration>
-  <version>1.4.5</version>
+  <version>2.0.0</version>
   <globalConnectionSettings>
     <connectionTimeout>20000</connectionTimeout>
     <retrievalRetryCount>3</retrievalRetryCount>
@@ -49,6 +49,7 @@
         <downloadRemoteIndex>false</downloadRemoteIndex>
         <checksumPolicy>WARN</checksumPolicy>
         <repositoryPolicy>RELEASE</repositoryPolicy>
+        <fileTypeValidation>true</fileTypeValidation>
       </externalConfiguration>
     </repository>
     <repository>
@@ -80,6 +81,7 @@
         <downloadRemoteIndex>false</downloadRemoteIndex>
         <checksumPolicy>WARN</checksumPolicy>
         <repositoryPolicy>RELEASE</repositoryPolicy>
+        <fileTypeValidation>true</fileTypeValidation>
       </externalConfiguration>
     </repository>
     <repository>
@@ -208,7 +210,6 @@
       <providerRole>org.sonatype.nexus.proxy.repository.Repository</providerRole>
       <providerHint>maven2</providerHint>
       <localStatus>IN_SERVICE</localStatus>
-      <notFoundCacheActive>true</notFoundCacheActive>
       <notFoundCacheTTL>1440</notFoundCacheTTL>
       <userManaged>true</userManaged>
       <exposed>true</exposed>
@@ -235,7 +236,6 @@
       <providerRole>org.sonatype.nexus.proxy.repository.Repository</providerRole>
       <providerHint>maven2</providerHint>
       <localStatus>IN_SERVICE</localStatus>
-      <notFoundCacheActive>true</notFoundCacheActive>
       <notFoundCacheTTL>1440</notFoundCacheTTL>
       <userManaged>true</userManaged>
       <exposed>true</exposed>
@@ -262,7 +262,6 @@
       <providerRole>org.sonatype.nexus.proxy.repository.Repository</providerRole>
       <providerHint>maven2</providerHint>
       <localStatus>IN_SERVICE</localStatus>
-      <notFoundCacheActive>true</notFoundCacheActive>
       <notFoundCacheTTL>1440</notFoundCacheTTL>
       <userManaged>true</userManaged>
       <exposed>true</exposed>
@@ -308,7 +307,6 @@
       <providerRole>org.sonatype.nexus.proxy.repository.ShadowRepository</providerRole>
       <providerHint>m1-m2-shadow</providerHint>
       <localStatus>IN_SERVICE</localStatus>
-      <notFoundCacheActive>true</notFoundCacheActive>
       <notFoundCacheTTL>15</notFoundCacheTTL>
       <userManaged>true</userManaged>
       <exposed>true</exposed>
@@ -329,7 +327,6 @@
       <providerRole>org.sonatype.nexus.proxy.repository.GroupRepository</providerRole>
       <providerHint>maven2</providerHint>
       <localStatus>IN_SERVICE</localStatus>
-      <notFoundCacheActive>true</notFoundCacheActive>
       <notFoundCacheTTL>15</notFoundCacheTTL>
       <userManaged>true</userManaged>
       <exposed>true</exposed>

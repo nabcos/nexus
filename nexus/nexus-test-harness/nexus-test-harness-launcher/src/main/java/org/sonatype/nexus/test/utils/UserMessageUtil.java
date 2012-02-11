@@ -1,33 +1,29 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.test.utils;
 
-import java.io.IOException;
+import static org.hamcrest.MatcherAssert.*;
+import static org.sonatype.nexus.test.utils.NexusRequestMatchers.*;
 
+import java.io.IOException;
 import java.util.List;
 
-import org.apache.log4j.Logger;
 import org.restlet.data.MediaType;
 import org.restlet.data.Method;
 import org.restlet.data.Response;
-import org.restlet.data.Status;
 import org.restlet.resource.StringRepresentation;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.sonatype.nexus.integrationtests.AbstractNexusIntegrationTest;
 import org.sonatype.nexus.integrationtests.RequestFacade;
 import org.sonatype.plexus.rest.representation.XStreamRepresentation;
@@ -40,7 +36,6 @@ import org.sonatype.security.rest.model.UserResourceRequest;
 import org.testng.Assert;
 
 import com.thoughtworks.xstream.XStream;
-
 public class UserMessageUtil
     extends ITUtil
 {
@@ -48,7 +43,7 @@ public class UserMessageUtil
 
     private MediaType mediaType;
 
-    private static final Logger LOG = Logger.getLogger( UserMessageUtil.class );
+    private static final Logger LOG = LoggerFactory.getLogger( UserMessageUtil.class );
 
     public UserMessageUtil( AbstractNexusIntegrationTest test, XStream xstream, MediaType mediaType )
     {
@@ -93,15 +88,10 @@ public class UserMessageUtil
         throws IOException
     {
 
-        Response response = RequestFacade.doGetRequest( "service/local/users/" + userId );
-        String responseText = response.getEntity().getText();
-        if ( !response.getStatus().isSuccess() )
-        {
-            Assert.fail( "Error retrieving user '" + userId + "' \n" + responseText );
-        }
+        String entityText = RequestFacade.doGetForText( "service/local/users/" + userId );
 
         XStreamRepresentation representation =
-            new XStreamRepresentation( XStreamFactory.getXmlXStream(), responseText, MediaType.APPLICATION_XML );
+            new XStreamRepresentation( XStreamFactory.getXmlXStream(), entityText, MediaType.APPLICATION_XML );
 
         UserResourceRequest resourceResponse =
             (UserResourceRequest) representation.getPayload( new UserResourceRequest() );
@@ -112,16 +102,15 @@ public class UserMessageUtil
     public UserResource updateUser( UserResource user )
         throws IOException
     {
-        Response response = this.sendMessage( Method.PUT, user );
-
-        if ( !response.getStatus().isSuccess() )
-        {
-            String responseText = response.getEntity().getText();
-            Assert.fail( "Could not update user: " + response.getStatus() + "\n" + responseText );
+        Response response = null;
+        UserResource responseResource;
+        try {
+            response = this.sendMessage( Method.PUT, user );
+            responseResource = this.getResourceFromResponse( response );
+            assertThat(response, isSuccessful());
+        } finally {
+            RequestFacade.releaseResponse(response);
         }
-
-        // get the Resource object
-        UserResource responseResource = this.getResourceFromResponse( response );
 
         // make sure the id != null
 
@@ -135,7 +124,9 @@ public class UserMessageUtil
         getTest().getSecurityConfigUtil().verifyUser( user );
         return responseResource;
     }
-
+    /**
+     * IMPORTANT: Make sure to release the Response in a finally block when you are done with it.
+     */
     public Response sendMessage( Method method, UserResource resource )
         throws IOException
     {
@@ -157,7 +148,7 @@ public class UserMessageUtil
 
     /**
      * This should be replaced with a REST Call, but the REST client does not set the Accept correctly on GET's/
-     * 
+     *
      * @return
      * @throws IOException
      */
@@ -165,17 +156,13 @@ public class UserMessageUtil
     public List<UserResource> getList()
         throws IOException
     {
-        Response response = RequestFacade.doGetRequest( "service/local/users" );
-        String responseText = response.getEntity().getText();
+        String responseText = RequestFacade.doGetForText( "service/local/users" );
         LOG.debug( "responseText: \n" + responseText );
 
         // must use the XML xstream even if we 'thought' we wanted to use JSON, because REST client doesn't listen to
         // the MediaType in some situations.
         XStreamRepresentation representation =
             new XStreamRepresentation( XStreamFactory.getXmlXStream(), responseText, MediaType.APPLICATION_XML );
-
-        // make sure we have a success
-        Assert.assertTrue( response.getStatus().isSuccess(), "Status: " + response.getStatus() + "\n" + responseText );
 
         UserListResourceResponse resourceResponse =
             (UserListResourceResponse) representation.getPayload( new UserListResourceResponse() );
@@ -214,14 +201,18 @@ public class UserMessageUtil
         // plexus_users
         String uriPart = RequestFacade.SERVICE_LOCAL + "plexus_users/" + source;
 
-        Response response =
-            RequestFacade.sendMessage( uriPart, Method.GET, new StringRepresentation( "", this.mediaType ) );
-        String responseString = response.getEntity().getText();
-        Assert.assertTrue( response.getStatus().isSuccess(),
-                           "Status: " + response.getStatus() + "\nResponse:\n" + responseString );
+        Response response = null;
+        String entityText;
+        try {
+            response = RequestFacade.sendMessage( uriPart, Method.GET, new StringRepresentation( "", this.mediaType ) );
+            entityText = response.getEntity().getText();
+            assertThat(response, isSuccessful());
+        } finally {
+            RequestFacade.releaseResponse(response);
+        }
 
         PlexusUserListResourceResponse result =
-            (PlexusUserListResourceResponse) this.parseResponseText( responseString,
+            (PlexusUserListResourceResponse) this.parseResponseText( entityText,
                                                                      new PlexusUserListResourceResponse() );
 
         return result.getData();
@@ -235,14 +226,18 @@ public class UserMessageUtil
         // plexus_user
         String uriPart = RequestFacade.SERVICE_LOCAL + "plexus_user/" + sourcePart + userId;
 
-        Response response =
-            RequestFacade.sendMessage( uriPart, Method.GET, new StringRepresentation( "", this.mediaType ) );
-        String responseString = response.getEntity().getText();
-        Assert.assertTrue( response.getStatus().isSuccess(),
-                           "Status: " + response.getStatus() + "\nResponse:\n" + responseString );
+        Response response = null;
+        String entityText;
+        try {
+            response = RequestFacade.sendMessage( uriPart, Method.GET, new StringRepresentation( "", this.mediaType ) );
+            entityText = response.getEntity().getText();
+            assertThat(response, isSuccessful());
+        } finally {
+            RequestFacade.releaseResponse(response);
+        }
 
         PlexusUserResourceResponse result =
-            (PlexusUserResourceResponse) this.parseResponseText( responseString, new PlexusUserResourceResponse() );
+            (PlexusUserResourceResponse) this.parseResponseText( entityText, new PlexusUserResourceResponse() );
 
         return result.getData();
     }
@@ -260,35 +255,39 @@ public class UserMessageUtil
         // user_search
         String uriPart = RequestFacade.SERVICE_LOCAL + "user_search/" + source + "/" + userId;
 
-        Response response =
-            RequestFacade.sendMessage( uriPart, Method.GET, new StringRepresentation( "", this.mediaType ) );
-        String responseString = response.getEntity().getText();
-        Assert.assertTrue( response.getStatus().isSuccess(),
-                           "Status: " + response.getStatus() + "\nResponse:\n" + responseString );
+        Response response = null;
+        String entityText;
+        try {
+            response = RequestFacade.sendMessage( uriPart, Method.GET, new StringRepresentation( "", this.mediaType ) );
+            entityText = response.getEntity().getText();
+            assertThat(response, isSuccessful());
+        } finally {
+            RequestFacade.releaseResponse(response);
+        }
 
         PlexusUserListResourceResponse result =
-            (PlexusUserListResourceResponse) this.parseResponseText( responseString,
+            (PlexusUserListResourceResponse) this.parseResponseText( entityText,
                                                                      new PlexusUserListResourceResponse() );
 
         return result.getData();
     }
 
     /**
+     * Delete the user, asserting the user was deleted successfully by checking the response status code
      * @param userId
      * @return Returns true when the user was deleted and false when it was not deleted
-     * @throws Exception
+     * @throws IOException problem with operation
+     * @throws IllegalArgumentException if you try to delete the 'anonymous' user id
      */
-    public static boolean removeUser( String userId )
+    public static void removeUser( String userId )
         throws IOException
     {
-
         if ( "anonymous".equals( userId ) )
         {
             throw new IllegalArgumentException( "Unable to delete anonymous user" );
         }
+        RequestFacade.doDelete("service/local/users/" + userId, isSuccessful());
 
-        Status status = RequestFacade.sendMessage( "service/local/users/" + userId, Method.DELETE ).getStatus();
-        return status.isSuccess();
     }
 
     /**

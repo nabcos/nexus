@@ -19,6 +19,7 @@
 package org.sonatype.nexus.test.utils;
 
 import java.io.File;
+
 import java.io.IOException;
 import java.util.Enumeration;
 import java.util.zip.ZipEntry;
@@ -123,12 +124,6 @@ public class ErrorReportUtil
     public static void validateZipContents( String directory )
         throws IOException
     {
-        validateZipContents( directory, false );
-    }
-
-    public static void validateZipContents( String directory, boolean expectException )
-        throws IOException
-    {
         File errorBundleDir = new File( directory + "/error-report-bundles" );
 
         Assert.assertTrue( errorBundleDir.exists() );
@@ -140,10 +135,10 @@ public class ErrorReportUtil
         Assert.assertTrue( files[0].getName().startsWith( "nexus-error-bundle" ) );
         Assert.assertTrue( files[0].getName().endsWith( ".zip" ) );
 
-        validateZipContents( files[0], expectException );
+        validateZipContents( files[0] );
     }
 
-    public static void validateZipContents( File file, boolean expectException )
+    public static void validateZipContents( File file )
         throws IOException
     {
         boolean foundException = false;
@@ -154,7 +149,6 @@ public class ErrorReportUtil
         boolean foundSecurityXml = false;
         boolean foundSecurityConfigXml = false;
         boolean foundOthers = false;
-        boolean foundNexusLog = false;
 
         ZipFile zipFile = new ZipFile( file );
 
@@ -177,7 +171,7 @@ public class ErrorReportUtil
             {
                 foundContextList = true;
             }
-            else if ( entry.getName().equals( "conf/log4j.properties" ) )
+            else if ( entry.getName().equals( "log4j.properties" ) )
             {
                 foundLog4j = true;
             }
@@ -205,7 +199,7 @@ public class ErrorReportUtil
             }
         }
 
-        Assert.assertEquals( expectException, foundException );
+        Assert.assertTrue( foundException );
         // Assert.assertTrue( foundFileList );
         Assert.assertTrue( foundContextList );
         Assert.assertTrue( foundLog4j );

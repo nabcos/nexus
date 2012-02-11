@@ -1,20 +1,14 @@
 /*
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 (function() {
 
@@ -220,6 +214,9 @@
 
         Sonatype.Events.fireEvent('nexusNavigationInit', this.nexusPanel);
 
+        // fire second event so plugins can contribute navigation items, and set the order
+        Sonatype.Events.fireEvent('nexusNavigationPostInit', this.nexusPanel);
+
         if (wasRendered)
         {
           this.nexusPanel.doLayout();
@@ -253,6 +250,16 @@
                     tabCode : Sonatype.repoServer.RepositoryPanel,
                     tabTitle : 'Repositories'
                   }, {
+                    enabled : sp.checkPermission('nexus:targets', sp.READ) && (sp.checkPermission('nexus:targets', sp.CREATE) || sp.checkPermission('nexus:targets', sp.DELETE) || sp.checkPermission('nexus:targets', sp.EDIT)),
+                    title : 'Repository Targets',
+                    tabId : 'targets-config',
+                    tabCode : Sonatype.repoServer.RepoTargetEditPanel
+                  }, {
+                    enabled : sp.checkPermission('nexus:routes', sp.READ) && (sp.checkPermission('nexus:routes', sp.CREATE) || sp.checkPermission('nexus:routes', sp.DELETE) || sp.checkPermission('nexus:routes', sp.EDIT)),
+                    title : 'Routing',
+                    tabId : 'routes-config',
+                    tabCode : Sonatype.repoServer.RoutesEditPanel
+                  }, {
                     enabled : sp.checkPermission('nexus:feeds', sp.READ),
                     title : 'System Feeds',
                     tabId : 'feed-view-system-changes',
@@ -266,53 +273,13 @@
               id : 'st-nexus-enterprise'
             });
 
-        // Config Group **************************************************
-        nexusPanel.add({
-              title : 'Administration',
-              id : 'st-nexus-config',
-              collapsed : true,
-              items : [{
-                    enabled : sp.checkPermission('nexus:settings', sp.READ) && (sp.checkPermission('nexus:settings', sp.CREATE) || sp.checkPermission('nexus:settings', sp.DELETE) || sp.checkPermission('nexus:settings', sp.EDIT)),
-                    title : 'Server',
-                    tabId : 'nexus-config',
-                    tabCode : Sonatype.repoServer.ServerEditPanel,
-                    tabTitle : 'Nexus'
-                  }, {
-                    enabled : sp.checkPermission('nexus:routes', sp.READ) && (sp.checkPermission('nexus:routes', sp.CREATE) || sp.checkPermission('nexus:routes', sp.DELETE) || sp.checkPermission('nexus:routes', sp.EDIT)),
-                    title : 'Routing',
-                    tabId : 'routes-config',
-                    tabCode : Sonatype.repoServer.RoutesEditPanel
-                  }, {
-                    enabled : sp.checkPermission('nexus:tasks', sp.READ) && (sp.checkPermission('nexus:tasks', sp.CREATE) || sp.checkPermission('nexus:tasks', sp.DELETE) || sp.checkPermission('nexus:tasks', sp.EDIT)),
-                    title : 'Scheduled Tasks',
-                    tabId : 'schedules-config',
-                    tabCode : Sonatype.repoServer.SchedulesEditPanel
-                  }, {
-                    enabled : sp.checkPermission('nexus:settings', sp.READ),
-                    title : 'Report Problem',
-                    tabId : 'error-report',
-                    handler : Sonatype.utils.generateErrorReportHandler
-                  }, {
-                    enabled : sp.checkPermission('nexus:logs', sp.READ) || sp.checkPermission('nexus:configuration', sp.READ),
-                    title : 'System Files',
-                    tabId : 'view-logs',
-                    tabCode : Sonatype.repoServer.LogsViewPanel,
-                    tabTitle : 'System Files'
-                  }, {
-                    enabled : sp.checkPermission('nexus:logconfig', sp.READ) && (sp.checkPermission('nexus:logconfig', sp.CREATE) || sp.checkPermission('nexus:logconfig', sp.DELETE) || sp.checkPermission('nexus:logconfig', sp.EDIT)),
-                    title : 'Log Configuration',
-                    tabId : 'log-config',
-                    tabCode : Sonatype.repoServer.LogEditPanel
-                  }]
-            });
-
         // Security Group **************************************************
         nexusPanel.add({
               title : 'Security',
               id : 'st-nexus-security',
               collapsed : true,
               items : [{
-                    enabled : Sonatype.user.curr.isLoggedIn == true && Sonatype.user.curr.loggedInUserSource == 'default' && sp.checkPermission('security:userschangepw', sp.CREATE),
+                    enabled : Sonatype.user.curr.isLoggedIn && Sonatype.user.curr.loggedInUserSource == 'default' && sp.checkPermission('security:userschangepw', sp.CREATE),
                     title : 'Change Password',
                     handler : Sonatype.utils.changePassword,
                     tabId : 'change-password'
@@ -331,11 +298,36 @@
                     title : 'Privileges',
                     tabId : 'security-privileges',
                     tabCode : Sonatype.repoServer.PrivilegeEditPanel
+                  }]
+            });
+
+        // Config Group **************************************************
+        nexusPanel.add({
+              title : 'Administration',
+              id : 'st-nexus-config',
+              collapsed : true,
+              items : [{
+                    enabled : sp.checkPermission('nexus:settings', sp.READ) && (sp.checkPermission('nexus:settings', sp.CREATE) || sp.checkPermission('nexus:settings', sp.DELETE) || sp.checkPermission('nexus:settings', sp.EDIT)),
+                    title : 'Server',
+                    tabId : 'nexus-config',
+                    tabCode : Sonatype.repoServer.ServerEditPanel,
+                    tabTitle : 'Nexus'
                   }, {
-                    enabled : sp.checkPermission('nexus:targets', sp.READ) && (sp.checkPermission('nexus:targets', sp.CREATE) || sp.checkPermission('nexus:targets', sp.DELETE) || sp.checkPermission('nexus:targets', sp.EDIT)),
-                    title : 'Repository Targets',
-                    tabId : 'targets-config',
-                    tabCode : Sonatype.repoServer.RepoTargetEditPanel
+                    enabled : sp.checkPermission('nexus:tasks', sp.READ) && (sp.checkPermission('nexus:tasks', sp.CREATE) || sp.checkPermission('nexus:tasks', sp.DELETE) || sp.checkPermission('nexus:tasks', sp.EDIT)),
+                    title : 'Scheduled Tasks',
+                    tabId : 'schedules-config',
+                    tabCode : Sonatype.repoServer.SchedulesEditPanel
+                  }, {
+                    enabled : sp.checkPermission('nexus:logs', sp.READ) || sp.checkPermission('nexus:configuration', sp.READ),
+                    title : 'System Files',
+                    tabId : 'view-logs',
+                    tabCode : Sonatype.repoServer.LogsViewPanel,
+                    tabTitle : 'System Files'
+                  }, {
+                    enabled : sp.checkPermission('nexus:logconfig', sp.READ) && (sp.checkPermission('nexus:logconfig', sp.CREATE) || sp.checkPermission('nexus:logconfig', sp.DELETE) || sp.checkPermission('nexus:logconfig', sp.EDIT)),
+                    title : 'Log Configuration',
+                    tabId : 'log-config',
+                    tabCode : Sonatype.repoServer.LogEditPanel
                   }]
             });
 
@@ -349,12 +341,17 @@
                     tabId : 'AboutNexus',
                     tabCode : Sonatype.repoServer.HelpAboutPanel
                   }, {
+                    title : 'Browse Issue Tracker',
+                    href : 'http://links.sonatype.com/products/nexus/oss/issues'
+                  }, {
                     title : 'Documentation',
                     tabId : 'Documentation',
                     tabCode : Sonatype.repoServer.Documentation
                   }, {
-                    title : 'Browse Issue Tracker',
-                    href : 'https://issues.sonatype.org/browse/NEXUS/'
+                    enabled : sp.checkPermission('nexus:settings', sp.READ),
+                    title : 'Report Problem',
+                    tabId : 'error-report',
+                    handler : Sonatype.utils.generateErrorReportHandler
                   }]
             });
       },
@@ -430,7 +427,7 @@
           }
         };
 
-        var welcomeMsg = '<p style="text-align:center;"><a href="http://nexus.sonatype.org" target="new">' + '<img src="images/nexus.png" border="0" alt="Welcome to the Sonatype Nexus Maven Repository Manager"></a>' + '</p>';
+        var welcomeMsg = '<p style="text-align:center;"><a href="http://nexus.sonatype.org" target="new">' + '<img src="images/nexus200x50.png" border="0" alt="Welcome to the Sonatype Nexus Maven Repository Manager"></a>' + '</p>';
 
         var statusEnabled = sp.checkPermission('nexus:status', sp.READ);
         if (!statusEnabled)

@@ -1,32 +1,31 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.plugins.repository;
 
 import java.io.File;
+import java.io.FilenameFilter;
 import java.io.IOException;
 import java.net.URL;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.regex.Pattern;
 
-import org.apache.maven.index.artifact.ArtifactPackagingMapper;
-import org.codehaus.plexus.component.annotations.Requirement;
+import javax.inject.Inject;
+
+import org.codehaus.plexus.util.StringUtils;
+import org.sonatype.nexus.proxy.maven.gav.Gav;
+import org.sonatype.nexus.proxy.maven.packaging.ArtifactPackagingMapper;
 import org.sonatype.plugin.metadata.GAVCoordinate;
 import org.sonatype.plugins.model.PluginMetadata;
 
@@ -46,7 +45,7 @@ public abstract class AbstractFileNexusPluginRepository
     // Implementation fields
     // ----------------------------------------------------------------------
 
-    @Requirement
+    @Inject
     private ArtifactPackagingMapper packagingMapper;
 
     // ----------------------------------------------------------------------
@@ -96,13 +95,14 @@ public abstract class AbstractFileNexusPluginRepository
                                                                      final GAVCoordinate gav )
         throws NoSuchPluginRepositoryArtifactException
     {
-        final File dependenciesFolder = new File( getPluginFolder( plugin.getCoordinate() ), "dependencies" );
-        final File artifact = new File( dependenciesFolder, gav.getFinalName( packagingMapper ) );
-        if ( !artifact.isFile() )
+        final File dependencyArtifact = resolveSnapshotOrReleaseDependencyArtifact( plugin, gav );
+
+        if ( dependencyArtifact == null || !dependencyArtifact.isFile() )
         {
             throw new NoSuchPluginRepositoryArtifactException( this, gav );
         }
-        return new PluginRepositoryArtifact( gav, artifact, this );
+
+        return new PluginRepositoryArtifact( gav, dependencyArtifact, this );
     }
 
     public final PluginMetadata getPluginMetadata( final GAVCoordinate gav )
@@ -117,14 +117,75 @@ public abstract class AbstractFileNexusPluginRepository
 
     protected abstract File getNexusPluginsDirectory();
 
+    protected File getPluginDependenciesFolder( final PluginRepositoryArtifact plugin )
+    {
+        return new File( getPluginFolder( plugin.getCoordinate() ), "dependencies" );
+    }
+
+    private static final String SNAPSHOT_TIMESTAMP_FILE_PATTERN = "([0-9]{8}.[0-9]{6})-([0-9]+)";
+
+    protected File resolveSnapshotOrReleaseDependencyArtifact( final PluginRepositoryArtifact plugin,
+                                                               final GAVCoordinate gav )
+    {
+        // TODO (cstamas): gav has baseVersion, we need to be a bit smarter about resolving it against timestamped too
+        // try with baseVersion (-SNAPSHOT) will work if bundle was assembled from stuff in local repository
+        // or is part of this same build
+        // Also, this part will work with release ones
+        final File dependenciesFolder = getPluginDependenciesFolder( plugin );
+        File dependencyArtifact = new File( dependenciesFolder, gav.getFinalName( packagingMapper ) );
+        if ( dependencyArtifact.isFile() )
+        {
+            return dependencyArtifact;
+        }
+
+        // for timestamped snapshots, we need another try
+        if ( Gav.isSnapshot( gav.getVersion() ) )
+        {
+            // is a snapshot, but is a a timestamped one, so let's try to find it
+            final StringBuilder buf = new StringBuilder();
+            if ( StringUtils.isNotEmpty( gav.getClassifier() ) )
+            {
+                buf.append( '-' ).append( gav.getClassifier() );
+            }
+            if ( StringUtils.isNotEmpty( gav.getType() ) )
+            {
+                buf.append( '.' ).append( packagingMapper.getExtensionForPackaging( gav.getType() ) );
+            }
+            else
+            {
+                buf.append( ".jar" );
+            }
+
+            final String versionBaseline =
+                gav.getVersion().substring( 0, gav.getVersion().length() - "SNAPSHOT".length() );
+            final Pattern pattern =
+                Pattern.compile( "^" + Pattern.quote( gav.getArtifactId() ) + "-" + Pattern.quote( versionBaseline )
+                    + SNAPSHOT_TIMESTAMP_FILE_PATTERN + Pattern.quote( buf.toString() ) + "$" );
+
+            File[] dependencies = dependenciesFolder.listFiles( new FilenameFilter()
+            {
+                @Override
+                public boolean accept( File dir, String name )
+                {
+                    return pattern.matcher( name ).matches();
+                }
+            } );
+
+            if ( dependencies != null && dependencies.length == 1 && dependencies[0].isFile() )
+            {
+                return dependencies[0];
+            }
+        }
+
+        return null;
+    }
+
     protected File[] getPluginFolders()
     {
         return getNexusPluginsDirectory().listFiles();
     }
 
-    @SuppressWarnings( "unused" )
     protected File getPluginFolder( final GAVCoordinate gav )
-        throws NoSuchPluginRepositoryArtifactException
     {
         return new File( getNexusPluginsDirectory(), gav.getArtifactId() + '-' + gav.getVersion() );
     }

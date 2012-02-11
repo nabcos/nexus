@@ -1,22 +1,19 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.integrationtests.nexus504;
+
+import static org.hamcrest.MatcherAssert.*;
+import static org.sonatype.nexus.test.utils.StatusMatchers.*;
 
 import org.restlet.data.MediaType;
 import org.restlet.data.Status;
@@ -27,7 +24,6 @@ import org.sonatype.nexus.test.utils.RoleMessageUtil;
 import org.sonatype.nexus.test.utils.UserCreationUtil;
 import org.sonatype.nexus.test.utils.UserMessageUtil;
 import org.sonatype.security.rest.model.RoleResource;
-import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -48,9 +44,10 @@ public class Nexus504ChangeRoleIT
     private static final String NEXUS504_ROLE = "nexus504-role";
 
     private RoleMessageUtil roleUtil;
-    
+
     @BeforeClass
-    public void setSecureTest(){
+    public void setSecureTest()
+    {
         TestContainer.getInstance().getTestContext().setSecureTest( true );
     }
 
@@ -75,22 +72,20 @@ public class Nexus504ChangeRoleIT
         testContext.setUsername( NEXUS504_USER );
         testContext.setPassword( TEST_USER_PASSWORD );
 
-        Status status = UserCreationUtil.login();
-        Assert.assertEquals( status.getCode(), 403, "User should not be able to login " );
+        assertThat( UserCreationUtil.login(), hasStatusCode( 403 ) );
 
         // add login privilege to role
         testContext.useAdminForRequests();
 
         RoleResource role = roleUtil.getRole( NEXUS504_ROLE );
         role.addPrivilege( "2"/* login */);
-        status = RoleMessageUtil.update( role );
-        Assert.assertTrue( status.isSuccess(),
-                           "Unable to add login privilege to role " + NEXUS504_ROLE + "\n" + status.getDescription() );
+        assertThat( "Unable to add login privilege to role " + NEXUS504_ROLE + "\n"
+            + RoleMessageUtil.update( role ).getDescription(), RoleMessageUtil.update( role ), isSuccess() );
 
         // try to login again
         testContext.setUsername( NEXUS504_USER );
         testContext.setPassword( TEST_USER_PASSWORD );
-        status = UserCreationUtil.login();
-        Assert.assertEquals( status.getCode(), 200, "User should be able to login " );
+        Status status2 = UserCreationUtil.login();
+        assertThat( status2, hasStatusCode( 200 ) );
     }
 }

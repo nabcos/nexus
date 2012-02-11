@@ -1,32 +1,27 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.integrationtests.nexus3929;
 
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertTrue;
+import static org.hamcrest.MatcherAssert.*;
+import static org.sonatype.nexus.test.utils.StatusMatchers.*;
+import static org.testng.Assert.*;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 
 import org.apache.commons.io.FileUtils;
-import org.restlet.data.Status;
 import org.sonatype.nexus.integrationtests.AbstractNexusIntegrationTest;
 import org.sonatype.nexus.test.utils.UserCreationUtil;
 import org.testng.annotations.BeforeMethod;
@@ -49,15 +44,15 @@ public class Nexus3929TimelineCorruptionIT
 
                 stopNexus();
 
-                File tl = new File( nexusWorkDir, "timeline/index" );
-                while ( FileUtils.listFiles( tl, new String[] { "cfs" }, false ).size() < 7 )
+                final File tl = new File( nexusWorkDir, "timeline/index" );
+                while ( getTimelineLuceneSegments( tl ).size() < 7 )
                 {
                     startNexus();
                     stopNexus();
                 }
 
-                @SuppressWarnings( "unchecked" )
-                List<File> cfs = new ArrayList<File>( FileUtils.listFiles( tl, new String[] { "cfs" }, false ) );
+                List<File> cfs = getTimelineLuceneSegments( tl );
+                // just delete some files to wreck the index
                 FileUtils.forceDelete( cfs.get( 0 ) );
                 FileUtils.forceDelete( cfs.get( 2 ) );
                 FileUtils.forceDelete( cfs.get( 5 ) );
@@ -67,12 +62,32 @@ public class Nexus3929TimelineCorruptionIT
         }
     }
 
+    protected List<File> getTimelineLuceneSegments( final File timelineLuceneIndexDirectory )
+    {
+        @SuppressWarnings( "unchecked" )
+        final List<File> luceneFiles =
+            new ArrayList<File>( FileUtils.listFiles( timelineLuceneIndexDirectory, new String[] { "cfs", "fnm", "fdt",
+                "fdx", "frm", "frq", "nrm", "prx", "tii", "tis" }, false ) );
+
+        // filter it
+        final Iterator<File> lfi = luceneFiles.iterator();
+        while ( lfi.hasNext() )
+        {
+            final File luceneFile = lfi.next();
+            if ( luceneFile.isFile() && luceneFile.getName().startsWith( "segments." ) )
+            {
+                lfi.remove();
+            }
+        }
+
+        return luceneFiles;
+    }
+
     @Test
     public void login()
         throws Exception
     {
-        Status s = UserCreationUtil.login();
-        assertTrue( s.isSuccess() );
+        assertThat( UserCreationUtil.login(), isSuccess() );
     }
 
     @Test

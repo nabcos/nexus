@@ -1,25 +1,24 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.integrationtests.nexus2862;
 
+import static org.hamcrest.CoreMatchers.not;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.sonatype.nexus.test.utils.StatusMatchers.isSuccess;
+
 import java.io.IOException;
 
+import org.hamcrest.collection.IsEmptyCollection;
 import org.restlet.data.Status;
 import org.sonatype.nexus.integrationtests.AbstractNexusIntegrationTest;
 import org.sonatype.nexus.integrationtests.TestContainer;
@@ -33,6 +32,13 @@ import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
+
+/**
+ * Ad1: what does this test do here? Ad2: UrlRealm leaks badly
+ * 
+ * @author cstamas
+ *
+ */
 public class Nexus2862UrlRealmIT
     extends AbstractNexusIntegrationTest
 {
@@ -105,11 +111,11 @@ public class Nexus2862UrlRealmIT
     public void loginUrlRealm()
         throws IOException
     {
-        Assert.assertTrue( UserCreationUtil.login( "juka", "juk@" ).isSuccess() );
+        Status status = UserCreationUtil.login( "juka", "juk@" );
+        assertThat( status, isSuccess() );
+        assertThat( server.getAccessedUri(), not( IsEmptyCollection.<String> empty() ) );
 
-        Assert.assertFalse( server.getAccessedUri().isEmpty() );
-
-        Assert.assertTrue( UserCreationUtil.logout().isSuccess() );
+        UserCreationUtil.logout();
     }
 
     @Test
@@ -117,9 +123,9 @@ public class Nexus2862UrlRealmIT
         throws IOException
     {
         Status status = UserCreationUtil.login( "juka", "juka" );
-        Assert.assertFalse( status.isSuccess(), status + "" );
+        assertThat( status, not( isSuccess() ) );
 
-        Assert.assertTrue( UserCreationUtil.logout().isSuccess() );
+        UserCreationUtil.logout();
     }
 
     @Test
@@ -127,9 +133,9 @@ public class Nexus2862UrlRealmIT
         throws IOException
     {
         Status status = UserCreationUtil.login( "anuser", "juka" );
-        Assert.assertFalse( status.isSuccess(), status + "" );
+        assertThat( status, not( isSuccess() ) );
 
-        Assert.assertTrue( UserCreationUtil.logout().isSuccess() );
+        UserCreationUtil.logout();
     }
 
 }

@@ -1,45 +1,43 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.proxy.storage.local.fs;
 
-import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
+import javax.inject.Inject;
 
 import org.codehaus.plexus.component.annotations.Component;
-import org.codehaus.plexus.component.annotations.Requirement;
 import org.codehaus.plexus.util.StringUtils;
+import org.sonatype.nexus.mime.MimeSupport;
 import org.sonatype.nexus.proxy.ItemNotFoundException;
 import org.sonatype.nexus.proxy.LocalStorageException;
 import org.sonatype.nexus.proxy.NoSuchRepositoryException;
 import org.sonatype.nexus.proxy.ResourceStoreRequest;
+import org.sonatype.nexus.proxy.attributes.Attributes;
 import org.sonatype.nexus.proxy.item.AbstractStorageItem;
+import org.sonatype.nexus.proxy.item.ByteArrayContentLocator;
 import org.sonatype.nexus.proxy.item.ContentLocator;
 import org.sonatype.nexus.proxy.item.DefaultStorageCollectionItem;
 import org.sonatype.nexus.proxy.item.DefaultStorageFileItem;
 import org.sonatype.nexus.proxy.item.DefaultStorageLinkItem;
-import org.sonatype.nexus.proxy.item.PreparedContentLocator;
+import org.sonatype.nexus.proxy.item.LinkPersister;
 import org.sonatype.nexus.proxy.item.RepositoryItemUid;
 import org.sonatype.nexus.proxy.item.StorageFileItem;
 import org.sonatype.nexus.proxy.item.StorageItem;
@@ -48,10 +46,11 @@ import org.sonatype.nexus.proxy.repository.Repository;
 import org.sonatype.nexus.proxy.storage.UnsupportedStorageOperationException;
 import org.sonatype.nexus.proxy.storage.local.AbstractLocalRepositoryStorage;
 import org.sonatype.nexus.proxy.storage.local.LocalRepositoryStorage;
+import org.sonatype.nexus.proxy.wastebasket.Wastebasket;
 import org.sonatype.nexus.util.ItemPathUtils;
 
 /**
- * The Class DefaultFSLocalRepositoryStorage.
+ * LocalRepositoryStorage that uses plain File System (relies on {@link File}) to implement it's functionality.
  * 
  * @author cstamas
  */
@@ -61,8 +60,15 @@ public class DefaultFSLocalRepositoryStorage
 {
     public static final String PROVIDER_STRING = "file";
 
-    @Requirement
     private FSPeer fsPeer;
+
+    @Inject
+    public DefaultFSLocalRepositoryStorage( Wastebasket wastebasket, LinkPersister linkPersister,
+                                            MimeSupport mimeSupport, Map<String, Long> repositoryContexts, FSPeer fsPeer )
+    {
+        super( wastebasket, linkPersister, mimeSupport, repositoryContexts );
+        this.fsPeer = fsPeer;
+    }
 
     protected FSPeer getFSPeer()
     {
@@ -196,12 +202,6 @@ public class DefaultFSLocalRepositoryStorage
 
     /**
      * Retrieve item from file.
-     * 
-     * @param uid the uid
-     * @param target the target
-     * @return the abstract storage item
-     * @throws ItemNotFoundException the item not found exception
-     * @throws LocalStorageException the storage exception
      */
     protected AbstractStorageItem retrieveItemFromFile( Repository repository, ResourceStoreRequest request, File target )
         throws ItemNotFoundException, LocalStorageException
@@ -231,7 +231,6 @@ public class DefaultFSLocalRepositoryStorage
                 new DefaultStorageCollectionItem( repository, request, target.canRead(), target.canWrite() );
             coll.setModified( target.lastModified() );
             coll.setCreated( target.lastModified() );
-            repository.getAttributesHandler().fetchAttributes( coll );
             result = coll;
 
         }
@@ -255,8 +254,7 @@ public class DefaultFSLocalRepositoryStorage
                         link.setCreated( target.lastModified() );
                         result = link;
 
-                        repository.getAttributesHandler().touchItemLastRequested( System.currentTimeMillis(),
-                            repository, request, link );
+                        repository.getAttributesHandler().touchItemLastRequested( System.currentTimeMillis(), link );
                     }
                     catch ( NoSuchRepositoryException e )
                     {
@@ -271,16 +269,24 @@ public class DefaultFSLocalRepositoryStorage
                 {
                     DefaultStorageFileItem file =
                         new DefaultStorageFileItem( repository, request, target.canRead(), target.canWrite(),
-                            new FileContentLocator( target, getMimeUtil().getMimeType( target ) ) );
+                            new FileContentLocator( target, getMimeSupport().guessMimeTypeFromPath(
+                                repository.getMimeRulesSource(), target.getAbsolutePath() ) ) );
                     repository.getAttributesHandler().fetchAttributes( file );
                     file.setModified( target.lastModified() );
                     file.setCreated( target.lastModified() );
                     file.setLength( target.length() );
                     result = file;
 
-                    repository.getAttributesHandler().touchItemLastRequested( System.currentTimeMillis(), repository,
-                        request, file );
+                    repository.getAttributesHandler().touchItemLastRequested( System.currentTimeMillis(), file );
                 }
+            }
+            catch ( FileNotFoundException e )
+            {
+                // It is possible for this file to have been removed after the call to target.exists()
+                // this could have been an external process
+                // See: https://issues.sonatype.org/browse/NEXUS-4570
+                getLogger().debug( "File '{}' removed before finished processing the directory listing", target, e );
+                throw new ItemNotFoundException( request, repository, e );
             }
             catch ( IOException e )
             {
@@ -332,7 +338,7 @@ public class DefaultFSLocalRepositoryStorage
             StorageFileItem fItem = (StorageFileItem) item;
 
             prepareStorageFileItemForStore( fItem );
-            
+
             cl = fItem.getContentLocator();
         }
         else if ( item instanceof StorageLinkItem )
@@ -350,7 +356,7 @@ public class DefaultFSLocalRepositoryStorage
                 throw new LocalStorageException( "Problem ", e );
             }
 
-            cl = new PreparedContentLocator( new ByteArrayInputStream( bos.toByteArray() ), "text/xml" );
+            cl = new ByteArrayContentLocator( bos.toByteArray(), "text/xml" );
         }
 
         getFSPeer().storeItem( repository, item, target, cl );
@@ -369,7 +375,14 @@ public class DefaultFSLocalRepositoryStorage
         final ContentLocator mdis =
             item instanceof StorageFileItem ? ( (StorageFileItem) item ).getContentLocator() : null;
 
-        repository.getAttributesHandler().storeAttributes( item, mdis );
+        try
+        {
+            repository.getAttributesHandler().storeAttributes( item, mdis );
+        }
+        catch ( IOException e )
+        {
+            throw new LocalStorageException( "Cannot store attributes!", e );
+        }
     }
 
     public void shredItem( Repository repository, ResourceStoreRequest request )
@@ -377,7 +390,14 @@ public class DefaultFSLocalRepositoryStorage
     {
         RepositoryItemUid uid = repository.createUid( request.getRequestPath() );
 
-        repository.getAttributesHandler().deleteAttributes( uid );
+        try
+        {
+            repository.getAttributesHandler().deleteAttributes( uid );
+        }
+        catch ( IOException e )
+        {
+            throw new LocalStorageException( "Cannot delete attributes!", e );
+        }
 
         File target = getFileFromBase( repository, request );
 
@@ -389,25 +409,37 @@ public class DefaultFSLocalRepositoryStorage
     {
         RepositoryItemUid fromUid = repository.createUid( from.getRequestPath() );
 
-        AbstractStorageItem fromAttr = repository.getAttributesHandler().getAttributeStorage().getAttributes( fromUid );
-
-        // check does it have attrs at all
-        if ( fromAttr != null )
+        try
         {
-            RepositoryItemUid toUid = repository.createUid( to.getRequestPath() );
+            Attributes fromAttr = repository.getAttributesHandler().getAttributeStorage().getAttributes( fromUid );
 
-            fromAttr.setRepositoryItemUid( toUid );
+            // check does it have attrs at all
+            if ( fromAttr != null )
+            {
+                RepositoryItemUid toUid = repository.createUid( to.getRequestPath() );
+                fromAttr.setRepositoryId( toUid.getRepository().getId() );
+                fromAttr.setPath( toUid.getPath() );
+                repository.getAttributesHandler().getAttributeStorage().putAttributes( toUid, fromAttr );
+            }
 
-            repository.getAttributesHandler().getAttributeStorage().putAttribute( fromAttr );
+            File fromTarget = getFileFromBase( repository, from );
+
+            File toTarget = getFileFromBase( repository, to );
+
+            getFSPeer().moveItem( repository, from, fromTarget, to, toTarget );
+
+            repository.getAttributesHandler().getAttributeStorage().deleteAttributes( fromUid );
         }
-
-        File fromTarget = getFileFromBase( repository, from );
-
-        File toTarget = getFileFromBase( repository, to );
-
-        getFSPeer().moveItem( repository, from, fromTarget, to, toTarget );
-
-        repository.getAttributesHandler().getAttributeStorage().deleteAttributes( fromUid );
+        catch ( LocalStorageException e )
+        {
+            // to not wrap these, they are IOEx subclass
+            throw e;
+        }
+        catch ( IOException e )
+        {
+            // cleanup
+            throw new LocalStorageException( "Cannot store attributes!", e );
+        }
     }
 
     public Collection<StorageItem> listItems( Repository repository, ResourceStoreRequest request )
@@ -429,7 +461,15 @@ public class DefaultFSLocalRepositoryStorage
 
                 ResourceStoreRequest collMemberReq = new ResourceStoreRequest( request );
 
-                result.add( retrieveItemFromFile( repository, collMemberReq, file ) );
+                try
+                {
+                    result.add( retrieveItemFromFile( repository, collMemberReq, file ) );
+                }
+                catch ( ItemNotFoundException e )
+                {
+                    getLogger().debug( "ItemNotFoundException while listing directory, for request: {}",
+                        collMemberReq.getRequestPath(), e );
+                }
 
                 request.popRequestPath();
             }

@@ -32,31 +32,35 @@ public interface ErrorReportingManager
 
     void setEnabled( boolean value );
 
+    String getJIRAUrl();
+
+    void setJIRAUrl( String url );
+
+    String getJIRAProject();
+
+    void setJIRAProject( String pkey );
+
+    String getJIRAUsername();
+
+    void setJIRAUsername( String username );
+
+    String getJIRAPassword();
+
+    void setJIRAPassword( String password );
+
+    boolean isUseGlobalProxy();
+
+    void setUseGlobalProxy( boolean val );
+
     // ==
 
     ErrorReportResponse handleError( ErrorReportRequest request )
         throws IssueSubmissionException, IOException, GeneralSecurityException;
-    
-    ErrorReportResponse handleError( ErrorReportRequest request, String jiraUsername, String jiraPassword)
+
+    ErrorReportResponse handleError( ErrorReportRequest request, String jiraUsername, String jiraPassword,
+                                     boolean useGlobalHttpProxy )
         throws IssueSubmissionException, IOException, GeneralSecurityException;
-
-    ErrorReportResponse handleError( org.sonatype.nexus.error.reporting.ErrorReportRequest genReq, String jiraUsername,
-                                     String jiraPassword, boolean useGlobalProxy )
-        throws IssueSubmissionException, IOException, GeneralSecurityException;
-
-    void setJIRAUsername( String username );
-
-    void setJIRAPassword( String password );
-
-    String getJIRAUsername();
-
-    String getJIRAPassword();
-
-    boolean isUseGlobalProxy();
-
-    void setUseGlobalProxy( boolean useGlobalProxy );
 
     File assembleBundle( ErrorReportRequest request )
-        throws IssueSubmissionException, IOException;
-
+        throws IOException;
 }

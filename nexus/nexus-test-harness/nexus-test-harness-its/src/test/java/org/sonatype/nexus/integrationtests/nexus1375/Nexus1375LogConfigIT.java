@@ -1,20 +1,14 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.integrationtests.nexus1375;
 
@@ -54,15 +48,13 @@ public class Nexus1375LogConfigIT
     {
         LogConfigResource resource = messageUtil.getLogConfig();
 
-        Assert.assertEquals( "DEBUG", resource.getRootLoggerLevel() );
+        Assert.assertEquals( resource.getRootLoggerLevel(), "DEBUG" );
 
-        Assert.assertEquals( "logfile, record", resource.getRootLoggerAppenders() );
+        Assert.assertEquals( resource.getFileAppenderPattern(), "%4d{yyyy-MM-dd HH:mm:ss} %-5p [%-15.15t] - %c - %m%n" );
 
-        Assert.assertEquals( "%4d{yyyy-MM-dd HH:mm:ss} %-5p [%-15.15t] - %c - %m%n", resource.getFileAppenderPattern() );
-
-        File actualLoggerLocation = new File( resource.getFileAppenderLocation() ).getCanonicalFile();
-
-        Assert.assertTrue( nexusLog.getAbsoluteFile().equals( actualLoggerLocation.getAbsoluteFile() ) );
+        // exposing actual OS file location over REST is very bad idea...
+        // File actualLoggerLocation = new File( resource.getFileAppenderLocation() ).getCanonicalFile();
+        // Assert.assertTrue( nexusLog.getAbsoluteFile().equals( actualLoggerLocation.getAbsoluteFile() ) );
     }
 
     @Test
@@ -71,19 +63,18 @@ public class Nexus1375LogConfigIT
     {
         LogConfigResource resource = messageUtil.getLogConfig();
 
-        Assert.assertEquals( "DEBUG", resource.getRootLoggerLevel() );
-        Assert.assertEquals( "logfile, record", resource.getRootLoggerAppenders() );
+        Assert.assertEquals( resource.getRootLoggerLevel(), "DEBUG" );
 
         resource.setRootLoggerLevel( "ERROR" );
 
         messageUtil.updateLogConfig( resource );
 
-        Assert.assertEquals( "ERROR", resource.getRootLoggerLevel() );
+        Assert.assertEquals(resource.getRootLoggerLevel(),  "ERROR" );
 
         resource.setRootLoggerLevel( "DEBUG" );
 
         messageUtil.updateLogConfig( resource );
 
-        Assert.assertEquals( "DEBUG", resource.getRootLoggerLevel() );
+        Assert.assertEquals( resource.getRootLoggerLevel(), "DEBUG" );
     }
 }

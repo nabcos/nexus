@@ -1,26 +1,20 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.integrationtests.proxy.nexus1111;
 
 import static org.sonatype.nexus.integrationtests.ITGroups.PROXY;
+import static org.sonatype.tests.http.server.fluent.Behaviours.error;
 
-import org.mortbay.jetty.Server;
 import org.restlet.data.MediaType;
 import org.sonatype.jettytestsuite.ServletServer;
 import org.sonatype.nexus.integrationtests.AbstractNexusProxyIntegrationTest;
@@ -30,6 +24,7 @@ import org.sonatype.nexus.rest.model.ScheduledServicePropertyResource;
 import org.sonatype.nexus.tasks.descriptors.ExpireCacheTaskDescriptor;
 import org.sonatype.nexus.test.utils.RepositoryMessageUtil;
 import org.sonatype.nexus.test.utils.TaskScheduleUtil;
+import org.sonatype.tests.http.server.fluent.Server;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -53,15 +48,13 @@ public class Nexus1111ProxyRemote500ErrorIT
         downloadArtifact( "nexus1111", "artifact", "1.0", "jar", null, "target/downloads" );
 
         // stop the healthy server
-        ServletServer server = (ServletServer) this.lookup( ServletServer.ROLE );
+        ServletServer server = lookup( ServletServer.class );
         server.stop();
 
         int port = server.getPort();
 
         // start a server which always return HTTP-500 for get
-        Server return500Server = new Server( port );
-        return500Server.setHandler( new Return500Handler() );
-        return500Server.start();
+        Server return500Server = Server.withPort( port ).serve( "/*" ).withBehaviours( error( 500 ) );
 
         // download again
         try
@@ -124,9 +117,14 @@ public class Nexus1111ProxyRemote500ErrorIT
         server.start();
 
         // unblock it manually
+        // NEXUS-4410: since this issue is implemented, the lines below are not enough,
+        // since NFC will still contain the artifact do be downloaded, so we need to make it manually blocked and then allow proxy
+        // those steps DOES clean NFC
+        status.setProxyMode( ProxyMode.BLOCKED_MANUAL.name() );
+        util.updateStatus( status );
         status.setProxyMode( ProxyMode.ALLOW.name() );
         util.updateStatus( status );
-
+        
         // and now, all should go well
         downloadArtifact( "nexus1111", "artifact", "1.1", "jar", null, "target/downloads" );
     }

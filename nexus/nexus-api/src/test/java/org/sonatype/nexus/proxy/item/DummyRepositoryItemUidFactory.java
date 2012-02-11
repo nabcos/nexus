@@ -1,63 +1,26 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.proxy.item;
 
-import java.util.HashMap;
-import java.util.Map;
-
 import org.sonatype.nexus.proxy.NoSuchRepositoryException;
-import org.sonatype.nexus.proxy.repository.Repository;
 
 public class DummyRepositoryItemUidFactory
-    implements RepositoryItemUidFactory
+    extends AbstractRepositoryItemUidFactory
 {
-    public DefaultRepositoryItemUid createUid( Repository repository, String path )
-    {
-        return new DefaultRepositoryItemUid( this, repository, path );
-    }
-
-    public RepositoryItemUid createUid( String uidStr )
+    public DefaultRepositoryItemUid createUid( String uidStr )
         throws IllegalArgumentException, NoSuchRepositoryException
     {
         throw new UnsupportedOperationException(
             "This dummy factory does not supports this method (it needs repo registry et al)" );
-    }
-
-    private Map<String, LockResource> locks = new HashMap<String, LockResource>();
-
-    @Override
-    public synchronized RepositoryItemUidLock createUidLock( RepositoryItemUid uid )
-    {
-        LockResource lock = locks.get( uid.getKey() );
-
-        if ( lock == null )
-        {
-            lock = new SimpleLockResource();
-        }
-
-        return new DefaultRepositoryItemUidLock( this, uid, lock );
-    }
-
-    @Override
-    public void releaseUidLock( RepositoryItemUidLock uidLock )
-    {
-        // noop
-        // we should count refs here and remove from map, but gnaw
     }
 }

@@ -1,19 +1,18 @@
-<!-- Copyright (c) 2008-2011 Sonatype, Inc. All rights reserved. Includes
-  the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
-  This program is free software: you can redistribute it and/or modify it only
-  under the terms of the GNU Affero General Public License Version 3 as published
-  by the Free Software Foundation. This program is distributed in the hope
-  that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
-  warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-  GNU Affero General Public License Version 3 for more details. You should
-  have received a copy of the GNU Affero General Public License Version 3 along
-  with this program. If not, see http://www.gnu.org/licenses. Sonatype Nexus
-  (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype
-  Nexus are trademarks of Sonatype, Inc. Apache Maven is a trademark of the
-  Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation. All
-  other trademarks are the property of their respective owners. -->
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+<!--
+
+    Sonatype Nexus (TM) Open Source Version
+    Copyright (c) 2007-2012 Sonatype, Inc.
+    All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
+
+    This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+    which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
+
+    Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+    of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+    Eclipse Foundation. All other trademarks are the property of their respective owners.
+
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
 
   <!-- the version of maven's project object model -->
   <modelVersion>4.0.0</modelVersion>
@@ -21,7 +20,7 @@
   <parent>
     <groupId>org.sonatype.nexus</groupId>
     <artifactId>nexus-test</artifactId>
-    <version>1.9.2-SNAPSHOT</version>
+    <version>2.1-SNAPSHOT</version>
   </parent>
 
   <artifactId>nexus-test-common</artifactId>
@@ -34,6 +33,11 @@
     <dependency>
       <groupId>org.sonatype.sisu</groupId>
       <artifactId>sisu-inject-plexus</artifactId>
+      <scope>compile</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.google.guava</groupId>
+      <artifactId>guava</artifactId>
       <scope>compile</scope>
     </dependency>
     <dependency>
@@ -51,12 +55,39 @@
       <artifactId>hamcrest-core</artifactId>
       <scope>compile</scope>
     </dependency>
+    <dependency>
+      <groupId>org.sonatype.sisu.litmus</groupId>
+      <artifactId>litmus-testsupport</artifactId>
+      <version>1.1</version>
+      <exclusions>
+        <exclusion>
+          <artifactId>mockito-all</artifactId>
+          <groupId>org.mockito</groupId>
+        </exclusion>
+      </exclusions>
+    </dependency>
     <!-- this is here as a convenience to projects using test common -->
     <dependency>
       <groupId>org.mockito</groupId>
       <artifactId>mockito-core</artifactId>
       <scope>compile</scope>
-      <version>1.8.5</version>
+    </dependency>
+
+    <!-- profiling via benchmarks -->
+    <dependency>
+      <groupId>com.carrotsearch</groupId>
+      <artifactId>junit-benchmarks</artifactId>
+      <scope>compile</scope>
+    </dependency>
+    <!-- h2 used by junit benchmarks to store perf data -->
+    <dependency>
+      <groupId>com.h2database</groupId>
+      <artifactId>h2</artifactId>
+      <scope>compile</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-api</artifactId>
     </dependency>
   </dependencies>
 

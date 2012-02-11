@@ -1,51 +1,39 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.web;
 
 /**
- * Initialize logging system on start-up. Using this class assumes you are using Log4j!
+ * Initialize logging system on start-up.
  * 
  * @author juven
+ * @author adreghiciu@gmail.com
  */
-import java.io.File;
-import java.io.IOException;
-import java.net.URL;
 import java.util.logging.Handler;
 import java.util.logging.LogManager;
 import java.util.logging.Logger;
 
+import javax.servlet.ServletContext;
 import javax.servlet.ServletContextEvent;
 import javax.servlet.ServletContextListener;
 
-import org.apache.log4j.PropertyConfigurator;
-import org.codehaus.plexus.util.FileUtils;
-import org.codehaus.plexus.util.StringUtils;
+import org.codehaus.plexus.PlexusConstants;
+import org.codehaus.plexus.PlexusContainer;
+import org.codehaus.plexus.component.repository.exception.ComponentLookupException;
 import org.slf4j.bridge.SLF4JBridgeHandler;
 
 public class LogConfigListener
     implements ServletContextListener
 {
-    private static final String KEY_LOG_CONFIG_FILE = "plexus.log4j-prop-file";
-
-    private static final String KEY_NEXUS_WORK_DIR = "plexus.nexus-work";
-
-    private static final String RELATIVE_PATH_LOG_CONF = "conf/log4j.properties";
 
     private Handler[] originalHandlers;
 
@@ -53,11 +41,7 @@ public class LogConfigListener
     {
         setUpJULHandlerSLF4J();
 
-        String location = getLogConfigLocation();
-
-        ensureLogConfigLocation( location );
-
-        initializeLogConfig( location );
+        configureLogManager( sce.getServletContext() );
     }
 
     public void contextDestroyed( ServletContextEvent sce )
@@ -84,62 +68,39 @@ public class LogConfigListener
 
     private void setUpJULHandlerOriginal()
     {
+        SLF4JBridgeHandler.uninstall();
+
         Logger julLogger = LogManager.getLogManager().getLogger( "" );
 
-        Handler[] slf4jHandlers = julLogger.getHandlers();
-
-        for ( Handler handler : slf4jHandlers )
+        if ( originalHandlers != null )
         {
-            julLogger.removeHandler( handler );
-        }
-
-        for ( Handler handler : originalHandlers )
-        {
-            julLogger.addHandler( handler );
+            for ( Handler handler : originalHandlers )
+            {
+                julLogger.addHandler( handler );
+            }
         }
     }
 
-    private String getLogConfigLocation()
+    private void configureLogManager( ServletContext sc )
     {
-        String location = System.getProperty( KEY_LOG_CONFIG_FILE );
-
-        if ( StringUtils.isEmpty( location ) )
-        {
-            String workDir = System.getProperty( KEY_NEXUS_WORK_DIR );
-
-            location = new File( workDir, RELATIVE_PATH_LOG_CONF ).getAbsolutePath();
-
-            System.getProperties().put( KEY_LOG_CONFIG_FILE, location );
-        }
-
-        return location;
-    }
-
-    private void ensureLogConfigLocation( String location )
-    {
-        File logConfigFile = new File( location );
-
-        if ( logConfigFile.exists() )
-        {
-            return;
-        }
-
         try
         {
-            URL configUrl = this.getClass().getResource( "/META-INF/log/log4j.properties" );
+            PlexusContainer plexusContainer = (PlexusContainer) sc.getAttribute( PlexusConstants.PLEXUS_KEY );
+            if ( plexusContainer == null )
+            {
+                throw new IllegalStateException( "Could not find Plexus container in servlet context" );
+            }
 
-            FileUtils.copyURLToFile( configUrl, logConfigFile );
+            org.sonatype.nexus.log.LogManager logManager =
+                plexusContainer.lookup( org.sonatype.nexus.log.LogManager.class );
+
+            logManager.configure();
         }
-        catch ( IOException e )
+        catch ( ComponentLookupException e )
         {
-            throw new IllegalStateException( "Could not create default log4j.properties into "
-                + logConfigFile.getAbsolutePath(), e );
+            throw new IllegalStateException( "Could not lookup LogConfigurationParticipants" );
         }
-    }
 
-    private void initializeLogConfig( String location )
-    {
-        PropertyConfigurator.configure( location );
     }
 
 }

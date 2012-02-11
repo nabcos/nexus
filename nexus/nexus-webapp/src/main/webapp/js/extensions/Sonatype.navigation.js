@@ -1,20 +1,14 @@
 /*
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 Ext.namespace('Sonatype.navigation');
 
@@ -99,7 +93,8 @@ Ext.extend(Sonatype.navigation.NavigationPanel, Ext.Panel, {
           var panel = this.findById(c.sectionId);
           if (panel)
           {
-            return panel.add(c);
+            panel.add(c);
+            panel.sort();
           }
           else
           {
@@ -118,6 +113,7 @@ Ext.extend(Sonatype.navigation.NavigationPanel, Ext.Panel, {
         {
           panel.add(this.delayedItems[panel.id]);
           this.delayedItems[panel.id] = null;
+          panel.sort();
         }
         return panel;
       }
@@ -127,6 +123,7 @@ Sonatype.navigation.Section = function(config) {
   var config = config || {};
   var defaultConfig = {
     collapsible : true,
+    titleCollapse: true,
     collapsed : false
   };
 
@@ -186,6 +183,7 @@ Ext.extend(Sonatype.navigation.Section, Ext.Panel, {
           {
             // regular external link
             return {
+              sortable_title : c.title,
               autoHeight : true,
               html : '<ul class="group-links"><li><a href="' + c.href + '" target="' + c.href + '">' + c.title + '</a></li></ul>'
             }
@@ -199,6 +197,7 @@ Ext.extend(Sonatype.navigation.Section, Ext.Panel, {
             }
             // panel open action
             return c.enabled == false ? null : {
+              sortable_title : c.title,
               autoHeight : true,
               id : 'navigation-' + c.tabId,
               initialConfigNavigation : c,
@@ -264,6 +263,19 @@ Ext.extend(Sonatype.navigation.Section, Ext.Panel, {
           this.show();
         }
         return Sonatype.navigation.Section.superclass.add.call(this, c);
+      },
+
+      sort : function(asOrder) {
+        if(!this.items)
+        {
+            return;
+        }
+          
+        _fSorter = function(obj1, obj2) {
+           var fieldName = "sortable_title";
+           return Sonatype.utils.sortFn(obj1[fieldName], obj2[fieldName])
+        };
+        this.items.sort(asOrder || 'ASC', _fSorter);
       }
     });
 

@@ -1,151 +1,222 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.proxy.item;
 
 import java.io.File;
-import java.util.HashMap;
 import java.util.Map;
 
 import org.sonatype.nexus.proxy.RequestContext;
 import org.sonatype.nexus.proxy.ResourceStore;
 import org.sonatype.nexus.proxy.ResourceStoreRequest;
+import org.sonatype.nexus.proxy.attributes.Attributes;
+import org.sonatype.nexus.proxy.attributes.internal.AttributesMapAdapter;
+import org.sonatype.nexus.proxy.attributes.internal.DefaultAttributes;
 import org.sonatype.nexus.proxy.repository.Repository;
 import org.sonatype.nexus.proxy.router.RepositoryRouter;
 import org.sonatype.nexus.util.ItemPathUtils;
+import com.google.common.base.Strings;
 
 /**
  * The Class AbstractStorageItem.
- * 
+ *
  * @author cstamas
  */
 public abstract class AbstractStorageItem
     implements StorageItem
 {
-    /** The request */
+
+    /**
+     * The request
+     */
     private transient ResourceStoreRequest request;
 
-    /** The repository item uid. */
+    /**
+     * The repository item uid.
+     */
     private transient RepositoryItemUid repositoryItemUid;
 
-    /** The store. */
+    /**
+     * The store.
+     */
     private transient ResourceStore store;
 
-    /** The item context */
+    /**
+     * The item context
+     */
     private transient RequestContext context;
 
-    /** Used for versioning of attribute */
+    /**
+     * the attributes
+     */
+    private transient Attributes itemAttributes;
+
+    /**
+     * Used for versioning of attribute
+     */
     private int generation = 0;
 
-    /** The path. */
+    /**
+     * The path.
+     */
     private String path;
 
-    /** The readable. */
+    /**
+     * The readable.
+     */
     private boolean readable;
 
-    /** The writable. */
+    /**
+     * The writable.
+     */
     private boolean writable;
 
-    /** The repository id. */
+    /**
+     * The repository id.
+     */
     private String repositoryId;
 
-    /** The created. */
+    /**
+     * The created.
+     */
     private long created;
 
-    /** The modified. */
+    /**
+     * The modified.
+     */
     private long modified;
 
-    /** The stored locally. */
+    /**
+     * The stored locally.
+     */
     private long storedLocally;
 
-    /** The last remoteCheck timestamp. */
+    /**
+     * The last remoteCheck timestamp.
+     */
     // TODO: leave the field name as-is coz of persistence and old nexuses!
     private long lastTouched;
 
-    /** The last requested timestamp. */
+    /**
+     * The last requested timestamp.
+     */
     private long lastRequested;
 
-    /** Expired flag */
+    /**
+     * Expired flag
+     */
     private boolean expired;
 
-    /** The remote url. */
+    /**
+     * The remote url.
+     */
     private String remoteUrl;
 
-    /** The persisted attributes. */
+    /**
+     * The persisted attributes.
+     */
     private Map<String, String> attributes;
 
-    /**
-     * Instantiates a new abstract storage item.
-     * 
-     * @param path the path
-     * @param readable the readable
-     * @param writable the writable
-     */
-    public AbstractStorageItem( ResourceStoreRequest request, boolean readable, boolean writable )
+    // ==
+
+    public Attributes getRepositoryItemAttributes()
     {
-        super();
-        setPath( request.getRequestPath() );
-        this.request = request;
-        this.context = new RequestContext( request.getRequestContext() );
-        this.readable = readable;
-        this.writable = writable;
-        this.expired = false;
-        this.created = System.currentTimeMillis();
-        this.modified = this.created;
+        return itemAttributes;
+    }
+
+    /**
+     * This method should be called ONLY when you load up a _legacy_ attribute using _legacy_ attribute store!
+     */
+    public void upgrade()
+    {
+        this.context = new RequestContext();
+        this.itemAttributes = new DefaultAttributes();
+
+        // this here is for ITs only, some of them use "manually crafter" attributes XML files and would NPE
+        // In "real life", all the files stored in Nexus have at least sha1/md5 set as attributes, meaning,
+        // all the real life items has at least two attributes and this map would never be null!
+        if ( attributes != null )
+        {
+            getRepositoryItemAttributes().putAll( attributes );
+        }
+
+        getRepositoryItemAttributes().setGeneration( generation );
+        getRepositoryItemAttributes().setPath( path );
+        getRepositoryItemAttributes().setReadable( readable );
+        getRepositoryItemAttributes().setWritable( writable );
+        getRepositoryItemAttributes().setRepositoryId( repositoryId );
+        getRepositoryItemAttributes().setCreated( created );
+        getRepositoryItemAttributes().setModified( modified );
+        getRepositoryItemAttributes().setStoredLocally( storedLocally );
+        getRepositoryItemAttributes().setCheckedRemotely( lastTouched );
+        getRepositoryItemAttributes().setLastRequested( lastRequested );
+        getRepositoryItemAttributes().setExpired( expired );
+        if ( !Strings.isNullOrEmpty( remoteUrl ) )
+        {
+            getRepositoryItemAttributes().setRemoteUrl( remoteUrl );
+        }
+    }
+
+    // ==
+
+    /**
+     * Default constructor.
+     */
+    private AbstractStorageItem()
+    {
+        this.context = new RequestContext();
+        this.itemAttributes = new DefaultAttributes();
     }
 
     /**
      * Instantiates a new abstract storage item.
-     * 
-     * @param repository the repository
-     * @param path the path
-     * @param readable the readable
-     * @param writable the writable
      */
-    public AbstractStorageItem( Repository repository, ResourceStoreRequest request, boolean readable, boolean writable )
+    public AbstractStorageItem( final ResourceStoreRequest request, final boolean readable, final boolean writable )
+    {
+        this();
+        this.request = request;
+        this.context.setParentContext( request.getRequestContext() );
+        setPath( request.getRequestPath() );
+        setReadable( readable );
+        setWritable( writable );
+        setCreated( System.currentTimeMillis() );
+        setModified( getCreated() );
+    }
+
+    /**
+     * Instantiates a new abstract storage item.
+     */
+    public AbstractStorageItem( Repository repository, ResourceStoreRequest request, boolean readable,
+                                boolean writable )
     {
         this( request, readable, writable );
         this.store = repository;
-        this.repositoryItemUid = repository.createUid( path );
-        this.repositoryId = repository.getId();
+        this.repositoryItemUid = repository.createUid( getPath() );
+        setRepositoryId( repository.getId() );
     }
 
     /**
      * Instantiates a new abstract storage item.
-     * 
-     * @param router the router
-     * @param path the path
-     * @param virtual the virtual
-     * @param readable the readable
-     * @param writable the writable
      */
     public AbstractStorageItem( RepositoryRouter router, ResourceStoreRequest request, boolean readable,
                                 boolean writable )
     {
         this( request, readable, writable );
         this.store = router;
-        this.repositoryItemUid = null;
-        this.repositoryId = null;
     }
 
     /**
      * Gets the store.
-     * 
+     *
      * @return the store
      */
     public ResourceStore getStore()
@@ -155,7 +226,7 @@ public abstract class AbstractStorageItem
 
     /**
      * Sets the store.
-     * 
+     *
      * @param store
      */
     public void setStore( ResourceStore store )
@@ -186,123 +257,121 @@ public abstract class AbstractStorageItem
 
     /**
      * Sets the UID.
-     * 
+     *
      * @param repositoryItemUid
      */
     public void setRepositoryItemUid( RepositoryItemUid repositoryItemUid )
     {
         this.repositoryItemUid = repositoryItemUid;
-
         this.store = repositoryItemUid.getRepository();
 
-        this.repositoryId = repositoryItemUid.getRepository().getId();
-
-        this.path = repositoryItemUid.getPath();
+        getRepositoryItemAttributes().setRepositoryId( repositoryItemUid.getRepository().getId() );
+        getRepositoryItemAttributes().setPath( repositoryItemUid.getPath() );
     }
 
     public String getRepositoryId()
     {
-        return repositoryId;
+        return getRepositoryItemAttributes().getRepositoryId();
     }
 
     /**
      * Sets the repository id.
-     * 
+     *
      * @param repositoryId the new repository id
      */
     public void setRepositoryId( String repositoryId )
     {
-        this.repositoryId = repositoryId;
+        getRepositoryItemAttributes().setRepositoryId( repositoryId );
     }
 
     public long getCreated()
     {
-        return created;
+        return getRepositoryItemAttributes().getCreated();
     }
 
     /**
      * Sets the created.
-     * 
+     *
      * @param created the new created
      */
     public void setCreated( long created )
     {
-        this.created = created;
+        getRepositoryItemAttributes().setCreated( created );
     }
 
     public long getModified()
     {
-        return modified;
+        return getRepositoryItemAttributes().getModified();
     }
 
     /**
      * Sets the modified.
-     * 
+     *
      * @param modified the new modified
      */
     public void setModified( long modified )
     {
-        this.modified = modified;
+        getRepositoryItemAttributes().setModified( modified );
     }
 
     public boolean isReadable()
     {
-        return readable;
+        return getRepositoryItemAttributes().isReadable();
     }
 
     /**
      * Sets the readable.
-     * 
+     *
      * @param readable the new readable
      */
     public void setReadable( boolean readable )
     {
-        this.readable = readable;
+        getRepositoryItemAttributes().setReadable( readable );
     }
 
     public boolean isWritable()
     {
-        return writable;
+        return getRepositoryItemAttributes().isWritable();
     }
 
     /**
      * Sets the writable.
-     * 
+     *
      * @param writable the new writable
      */
     public void setWritable( boolean writable )
     {
-        this.writable = writable;
+        getRepositoryItemAttributes().setWritable( writable );
     }
 
     public String getPath()
     {
-        return path;
+        return getRepositoryItemAttributes().getPath();
     }
 
     /**
      * Sets the path.
-     * 
+     *
      * @param path the new path
      */
     public void setPath( String path )
     {
-        this.path = ItemPathUtils.cleanUpTrailingSlash( path );
+        getRepositoryItemAttributes().setPath( ItemPathUtils.cleanUpTrailingSlash( path ) );
     }
 
     public boolean isExpired()
     {
-        return expired;
+        return getRepositoryItemAttributes().isExpired();
     }
 
     /**
      * Sets the expired flag.
-     * 
+     *
      * @param expired
      */
     public void setExpired( boolean expired )
     {
-        this.expired = expired;
+        getRepositoryItemAttributes().setExpired( expired );
     }
 
     public String getName()
@@ -315,14 +384,13 @@ public abstract class AbstractStorageItem
         return ItemPathUtils.getParentPath( getPath() );
     }
 
+    /**
+     * {@inheritDoc}
+     */
+    @Deprecated
     public Map<String, String> getAttributes()
     {
-        if ( attributes == null )
-        {
-            attributes = new HashMap<String, String>();
-        }
-
-        return attributes;
+        return new AttributesMapAdapter( itemAttributes );
     }
 
     public RequestContext getItemContext()
@@ -337,113 +405,86 @@ public abstract class AbstractStorageItem
 
     public String getRemoteUrl()
     {
-        return remoteUrl;
+        return getRepositoryItemAttributes().getRemoteUrl();
     }
 
     /**
      * Sets the remote url.
-     * 
+     *
      * @param remoteUrl the new remote url
      */
     public void setRemoteUrl( String remoteUrl )
     {
-        this.remoteUrl = remoteUrl;
+        getRepositoryItemAttributes().setRemoteUrl( remoteUrl );
     }
 
     public long getStoredLocally()
     {
-        return storedLocally;
+        return getRepositoryItemAttributes().getStoredLocally();
     }
 
     /**
      * Sets the stored locally.
-     * 
+     *
      * @param storedLocally the new stored locally
      */
     public void setStoredLocally( long storedLocally )
     {
-        this.storedLocally = storedLocally;
+        getRepositoryItemAttributes().setStoredLocally( storedLocally );
     }
 
     public long getRemoteChecked()
     {
-        return lastTouched;
+        return getRepositoryItemAttributes().getCheckedRemotely();
     }
 
     /**
      * Sets the remote checked.
-     * 
-     * @param remoteChecked the new remote checked
+     *
+     * @param lastTouched the new remote checked
      */
     public void setRemoteChecked( long lastTouched )
     {
-        this.lastTouched = lastTouched;
+        getRepositoryItemAttributes().setCheckedRemotely( lastTouched );
     }
 
     public long getLastRequested()
     {
-        return lastRequested;
+        return getRepositoryItemAttributes().getLastRequested();
     }
 
     /**
      * Sets the last requested timestamp.
-     * 
+     *
      * @param lastRequested
      */
     public void setLastRequested( long lastRequested )
     {
-        this.lastRequested = lastRequested;
+        getRepositoryItemAttributes().setLastRequested( lastRequested );
     }
 
     public int getGeneration()
     {
-        return generation;
+        return getRepositoryItemAttributes().getGeneration();
     }
 
     public void incrementGeneration()
     {
-        this.generation++;
+        getRepositoryItemAttributes().incrementGeneration();
     }
 
+    @Deprecated
     public void overlay( StorageItem item )
         throws IllegalArgumentException
     {
         if ( item == null )
         {
             throw new NullPointerException( "Cannot overlay null item onto this item of class "
-                + this.getClass().getName() );
+                                                + this.getClass().getName() );
         }
-
-        if ( isOverlayable( item ) )
-        {
-            // TODO: WHY?
-            // these do not overlays:
-            // path
-            // readable
-            // writable
-            // repositoryItemUid
-            // store
-
-            // these do overlays:
-            setRepositoryId( item.getRepositoryId() );
-            setCreated( item.getCreated() );
-            setModified( item.getModified() );
-            setStoredLocally( item.getStoredLocally() );
-            setRemoteChecked( item.getRemoteChecked() );
-            setLastRequested( item.getLastRequested() );
-            setExpired( item.isExpired() );
-            setRemoteUrl( item.getRemoteUrl() );
-            getAttributes().putAll( item.getAttributes() );
-            if ( item.getItemContext() != null )
-            {
-                getItemContext().putAll( item.getItemContext() );
-            }
-        }
-        else
-        {
-            throw new IllegalArgumentException( "Cannot overlay storage item of class " + item.getClass().getName()
-                + " onto this item of class " + this.getClass().getName() );
-        }
+        // here was the "overlay" implemented, which was moved to DefaultAttributes#overlayAttributes method
+        // instead with much cleaner implementation. Here, it was unlear and code looked "arbitrary" (why
+        // some fields "win" over others).
     }
 
     protected boolean isOverlayable( StorageItem item )

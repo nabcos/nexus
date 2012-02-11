@@ -1,20 +1,14 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.integrationtests.nexus2692;
 
@@ -24,6 +18,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -41,6 +36,7 @@ import org.codehaus.plexus.util.DirectoryScanner;
 import org.codehaus.plexus.util.FileUtils;
 import org.codehaus.plexus.util.IOUtil;
 import org.sonatype.nexus.integrationtests.AbstractNexusIntegrationTest;
+import org.sonatype.nexus.proxy.item.AbstractStorageItem;
 import org.sonatype.nexus.proxy.item.DefaultStorageCollectionItem;
 import org.sonatype.nexus.proxy.item.DefaultStorageFileItem;
 import org.sonatype.nexus.proxy.item.DefaultStorageLinkItem;
@@ -49,6 +45,7 @@ import org.sonatype.nexus.rest.model.ScheduledServicePropertyResource;
 import org.sonatype.nexus.tasks.descriptors.EvictUnusedItemsTaskDescriptor;
 import org.sonatype.nexus.test.utils.TaskScheduleUtil;
 import org.testng.Assert;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
 
 import com.thoughtworks.xstream.XStream;
@@ -65,10 +62,25 @@ public class AbstractEvictTaskIt
 
     private File storageWorkDir;
 
+    @BeforeClass( alwaysRun = true )
+    public void trickNexusToUseLegacyAttributes()
+        throws Exception
+    {
+        final File legacyAttributes = new File(new File( nexusWorkDir ), "proxy/attributes" );
+
+        // the presence of this dir will trick nexus to use "transitioning"
+        legacyAttributes.mkdirs();
+        
+        // to not spawn the thread that might interfere with assertions here
+        System.setProperty( "org.sonatype.nexus.proxy.attributes.upgrade.AttributesUpgradeEventInspector.upgrade", Boolean.FALSE.toString() );
+    }
+
     @BeforeMethod
     public void setupStorageAndAttributes()
         throws Exception
     {
+        stopNexus();
+        
         File workDir = new File( AbstractNexusIntegrationTest.nexusWorkDir );
 
         this.storageWorkDir = new File( workDir, "storage" );
@@ -123,11 +135,22 @@ public class AbstractEvictTaskIt
                     StorageItem storageItem = (StorageItem) xstream.fromXML( fis );
                     IOUtil.close( fis );
 
-                    // update it
-                    long variation = ( 1258582311671l - storageItem.getLastRequested() ) + timestamp;
-                    storageItem.setLastRequested( variation + offset );
+                    // get old value, update it and set it, but all this is done using reflection
+                    // Direct method access will work, since we mangle an item that will be persisted using "old" format
+                    // Once item "upgraded", there is no backward way to downgrade it, to persist it using old format
+                    final Field field = AbstractStorageItem.class.getDeclaredField( "lastRequested" );
+                    field.setAccessible( true );
 
-                    // write it
+                    // get old value
+                    final long itemLastRequested = (Long) field.get( storageItem );
+
+                    // calculate the variation
+                    long variation = ( 1258582311671l - itemLastRequested ) + timestamp;
+
+                    // and set the value with reflection, since we will again persist it using XStream in "old" format
+                    field.set( storageItem, variation + offset );
+
+                    // write it out in "old" format
                     fos = new FileOutputStream( attributeFile );
                     xstream.toXML( storageItem, fos );
                     IOUtil.close( fos );
@@ -142,6 +165,8 @@ public class AbstractEvictTaskIt
             IOUtil.close( fis );
             IOUtil.close( reader );
         }
+        
+        startNexus();
     }
 
     protected void copyAttributes()
@@ -151,30 +176,19 @@ public class AbstractEvictTaskIt
 
         // old location
         FileUtils.copyDirectoryStructure( srcDir, new File( new File( nexusWorkDir ), "proxy/attributes" ) );
-        
+
         // new location will need path mangling, see getAttributeFile()
     }
 
     protected File getAttributeFile( String filePart )
     {
-        return new File(new File( new File( nexusWorkDir ), "proxy/attributes" ), filePart);
-        /* This is NEW layout!
-        String[] parts = filePart.split( "/" );
-
-        // repoId
-        StringBuilder sb = new StringBuilder( parts[0] );
-
-        // "sneak in" the ".nexus/attributes"
-        sb.append( "/.nexus/attributes" );
-
-        // the rest
-        for ( int i = 1; i < parts.length; i++ )
-        {
-            sb.append( "/" ).append( parts[i] );
-        }
-
-        return new File( storageWorkDir, sb.toString() );
-        */
+        return new File( new File( new File( nexusWorkDir ), "proxy/attributes" ), filePart );
+        /*
+         * This is NEW layout! String[] parts = filePart.split( "/" ); // repoId StringBuilder sb = new StringBuilder(
+         * parts[0] ); // "sneak in" the ".nexus/attributes" sb.append( "/.nexus/attributes" ); // the rest for ( int i
+         * = 1; i < parts.length; i++ ) { sb.append( "/" ).append( parts[i] ); } return new File( storageWorkDir,
+         * sb.toString() );
+         */
     }
 
     protected void runTask( int days, String repoId )
@@ -190,7 +204,8 @@ public class AbstractEvictTaskIt
         age.setKey( "evictOlderCacheItemsThen" );
         age.setValue( String.valueOf( days ) );
 
-        TaskScheduleUtil.runTask( EvictUnusedItemsTaskDescriptor.ID, EvictUnusedItemsTaskDescriptor.ID, prop, age );
+        TaskScheduleUtil.runTask( EvictUnusedItemsTaskDescriptor.ID, EvictUnusedItemsTaskDescriptor.ID, 300, true,
+            prop, age );
 
         getEventInspectorsUtil().waitForCalmPeriod();
     }
@@ -241,7 +256,7 @@ public class AbstractEvictTaskIt
             String repoId = path.substring( 0, path.indexOf( "/" ) );
             if ( otherNotChangedRepoids.contains( repoId ) )
             {
-                System.out.println( "found it:" + path );
+                log.debug( "found it:" + path );
                 expectedFiles.add( path );
             }
         }
@@ -279,26 +294,6 @@ public class AbstractEvictTaskIt
         }
 
         return buffer.toString();
-    }
-
-    protected SortedSet<String> getAttributeFilePaths()
-        throws IOException
-    {
-        SortedSet<String> result = new TreeSet<String>();
-        
-        SortedSet<String> attributes = getFilePaths( new File( new File( nexusWorkDir ), "proxy/attributes" ) );
-        // SortedSet<String> attributes = getFilePaths( getStorageWorkDir() );
-
-        for ( String attribute : attributes )
-        {
-            // if ( attribute.contains( "/.nexus/attributes" ) && !attribute.contains( "/.nexus/trash/.nexus/attributes" ) )
-            //{
-                // "tweak" the path, since test is dumb
-                result.add( attribute.replace( "/.nexus/attributes", "" ) );
-            //}
-        }
-
-        return result;
     }
 
     protected SortedSet<String> getItemFilePaths()

@@ -1,22 +1,27 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.configuration.application.validator;
+
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.empty;
+import static org.hamcrest.Matchers.emptyIterable;
+import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.greaterThan;
+import static org.hamcrest.Matchers.hasProperty;
+import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.is;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import java.io.File;
 import java.io.FileReader;
@@ -30,17 +35,22 @@ import java.util.List;
 
 import org.codehaus.plexus.util.IOUtil;
 import org.codehaus.plexus.util.xml.Xpp3Dom;
+import org.hamcrest.Matcher;
+import org.junit.Before;
 import org.junit.Test;
+import org.sonatype.configuration.validation.ValidationMessage;
 import org.sonatype.configuration.validation.ValidationRequest;
 import org.sonatype.configuration.validation.ValidationResponse;
 import org.sonatype.nexus.configuration.AbstractNexusTestCase;
-import org.sonatype.nexus.configuration.application.upgrade.ApplicationConfigurationUpgrader;
 import org.sonatype.nexus.configuration.model.CRepository;
 import org.sonatype.nexus.configuration.model.Configuration;
 import org.sonatype.nexus.configuration.model.DefaultCRepository;
 import org.sonatype.nexus.configuration.model.io.xpp3.NexusConfigurationXpp3Reader;
 import org.sonatype.nexus.configuration.model.io.xpp3.NexusConfigurationXpp3Writer;
 import org.sonatype.nexus.configuration.validator.ApplicationConfigurationValidator;
+import org.sonatype.nexus.configuration.validator.ApplicationValidationContext;
+import org.sonatype.nexus.configuration.validator.DefaultApplicationConfigurationValidator;
+import org.sonatype.nexus.proxy.repository.LocalStatus;
 import org.sonatype.nexus.proxy.repository.ShadowRepository;
 import org.sonatype.nexus.util.ExternalConfigUtil;
 
@@ -48,20 +58,14 @@ public class DefaultApplicationConfigurationValidatorTest
     extends AbstractNexusTestCase
 {
 
-    protected ApplicationConfigurationValidator configurationValidator;
+    protected DefaultApplicationConfigurationValidator underTest;
 
-    protected ApplicationConfigurationUpgrader configurationUpgrader;
-
+    @Before
     public void setUp()
         throws Exception
     {
         super.setUp();
-
-        this.configurationValidator = (ApplicationConfigurationValidator) lookup( ApplicationConfigurationValidator.class );
-
-        // I don't want to test both the validator, and the upgrade at the same time, but manually touching all these
-        // config files is worse.
-        this.configurationUpgrader = (ApplicationConfigurationUpgrader) lookup( ApplicationConfigurationUpgrader.class );
+        this.underTest = new DefaultApplicationConfigurationValidator();
     }
 
     protected Configuration getConfigurationFromStream( InputStream is )
@@ -72,7 +76,6 @@ public class DefaultApplicationConfigurationValidatorTest
         Reader fr = new InputStreamReader( is );
 
         return reader.read( fr );
-
     }
 
     protected Configuration loadNexusConfig( File configFile )
@@ -139,16 +142,15 @@ public class DefaultApplicationConfigurationValidatorTest
         config.addRepository( badShadow );
 
         // now validate it
-        ValidationResponse response = configurationValidator.validateModel( new ValidationRequest( config ) );
+        ValidationResponse response = underTest.validateModel( new ValidationRequest( config ) );
 
-        // XXX cstamas-merge assertEquals( 3, response.getValidationWarnings().size() );
-
-        // XXX cstamas-merge assertEquals( 1, response.getValidationErrors().size() );
+        assertThat( response.getValidationWarnings(), hasSize( 1 ) );
+        assertThat( response.getValidationErrors(), hasSize( 0 ) );
 
         // codehaus-snapshots has no name, it will be defaulted
-        assertTrue( response.isModified() );
+        assertThat( response.isModified(), is( true ) );
 
-     // XXX cstamas-merge assertFalse( response.isValid() );
+        assertThat( response.isValid(), is( true ) );
     }
 
     @Test
@@ -157,17 +159,18 @@ public class DefaultApplicationConfigurationValidatorTest
     {
         // get start with the default config
         this.copyDefaultConfigToPlace();
+        this.copyResource( "/META-INF/nexus/default-oss-nexus.xml", getNexusConfiguration() );
         Configuration config = this.loadNexusConfig( new File( this.getNexusConfiguration() ) );
 
         // make it bad
 
         // invalid policy
-        CRepository invalidPolicyRepo = (CRepository) config.getRepositories().get( 0 );
+        CRepository invalidPolicyRepo = config.getRepositories().get( 0 );
         Xpp3Dom externalConfig = (Xpp3Dom) invalidPolicyRepo.getExternalConfiguration();
         ExternalConfigUtil.setNodeValue( externalConfig, "repositoryPolicy", "badPolicy" );
 
         // duplicate the repository id
-        for ( CRepository repo : (List<CRepository>) config.getRepositories() )
+        for ( CRepository repo : config.getRepositories() )
         {
             if ( !repo.getId().equals( "central" ) )
             {
@@ -180,15 +183,13 @@ public class DefaultApplicationConfigurationValidatorTest
         // TODO: add more errors here
 
         // now validate it
-        ValidationResponse response = configurationValidator.validateModel( new ValidationRequest( config ) );
+        ValidationResponse response = underTest.validateModel( new ValidationRequest( config ) );
 
-        assertFalse( response.isValid() );
+        assertThat( response.isValid(), is( false ) );
+        assertThat( response.isModified(), is( false ) );
 
-        assertFalse( response.isModified() );
-
-     // XXX cstamas-merge assertEquals( 6, response.getValidationErrors().size() );
-
-     // XXX cstamas-merge  assertEquals( 0, response.getValidationWarnings().size() );
+        assertThat( response.getValidationErrors(), hasSize( greaterThan( 0 ) ) );
+        assertThat( response.getValidationWarnings(), hasSize( 0 ) );
     }
 
     @Test
@@ -203,17 +204,15 @@ public class DefaultApplicationConfigurationValidatorTest
         // and you have the diff, and you already have to manually update the good one.
 
         // this was before fix: groupId/repoId name clash
-        ValidationResponse response = configurationValidator.validateModel( new ValidationRequest(
+        ValidationResponse response = underTest.validateModel( new ValidationRequest(
             getConfigurationFromStream( getClass().getResourceAsStream(
                 "/org/sonatype/nexus/configuration/upgrade/nexus1710/nexus.xml.result-bad" ) ) ) );
 
-        assertFalse( response.isValid() );
+        assertThat( response.isValid(), is( false ) );
+        assertThat( response.isModified(), is( false ) );
 
-        assertFalse( response.isModified() );
-
-        assertEquals( 1, response.getValidationErrors().size() );
-
-        assertEquals( 0, response.getValidationWarnings().size() );
+        assertThat( response.getValidationErrors(), hasSize( 1 ) );
+        assertThat( response.getValidationWarnings(), hasSize( 0 ) );
     }
 
     @Test
@@ -221,13 +220,137 @@ public class DefaultApplicationConfigurationValidatorTest
         throws Exception
     {
         // this is after fix: groupId is appended by "-group" to resolve clash
-        ValidationResponse response = configurationValidator.validateModel( new ValidationRequest(
+        ValidationResponse response = underTest.validateModel( new ValidationRequest(
             getConfigurationFromStream( getClass().getResourceAsStream(
                 "/org/sonatype/nexus/configuration/upgrade/nexus1710/nexus.xml.result" ) ) ) );
 
-        assertTrue( response.isValid() );
+        assertThat( response.isValid(), is( true ) );
+        assertThat( response.isModified(), is( false ) );
 
-        assertFalse( response.isModified() );
+        assertThat( response.getValidationErrors(), hasSize( 0 ) );
+        assertThat( response.getValidationWarnings(), hasSize( 0 ) );
+    }
 
+    @Test
+    public void repoEmptyId()
+    {
+        ApplicationValidationContext ctx = new ApplicationValidationContext();
+
+        CRepository repo = new CRepository();
+        repo.setLocalStatus( LocalStatus.IN_SERVICE.toString() );
+        repo.setName( "name" );
+        ValidationResponse response = underTest.validateRepository( ctx, repo );
+
+        assertThat( response.isValid(), is( false ) );
+        assertThat( response.isModified(), is( false ) );
+
+        assertThat( response.getValidationErrors(), hasSize( 1 ) );
+        assertThat( response.getValidationWarnings(), hasSize( 0 ) );
+        assertThat( response.getValidationErrors().get( 0 ), hasKey("id") );
+    }
+
+    private Matcher<? super ValidationMessage> hasKey( final String id )
+    {
+        return hasProperty( "key", equalTo( "id") );
+    }
+
+    @Test
+    public void repoIllegalId()
+    {
+        ApplicationValidationContext ctx = new ApplicationValidationContext();
+        CRepository repo = new CRepository();
+        repo.setId( " " );
+        repo.setLocalStatus( LocalStatus.IN_SERVICE.toString() );
+        repo.setName( "name" );
+
+        ValidationResponse response = underTest.validateRepository( ctx, repo );
+
+        assertThat( response.isValid(), is( false ) );
+        assertThat( response.isModified(), is( false ) );
+
+        assertThat( response.getValidationErrors(), hasSize( 1 ) );
+        assertThat( response.getValidationWarnings(), hasSize( 0 ) );
+        assertThat( response.getValidationErrors().get( 0 ), hasKey("id") );
+    }
+
+    @Test
+    public void repoClashRepoId()
+    {
+        ApplicationValidationContext ctx = new ApplicationValidationContext();
+        ctx.addExistingRepositoryIds();
+        ctx.getExistingRepositoryIds().add( "id" );
+        CRepository repo = new CRepository();
+        repo.setId( "id" );
+        repo.setLocalStatus( LocalStatus.IN_SERVICE.toString() );
+        repo.setName( "name" );
+
+        ValidationResponse response = underTest.validateRepository( ctx, repo );
+
+        assertThat( response.isValid(), is( false ) );
+        assertThat( response.isModified(), is( false ) );
+
+        assertThat( response.getValidationErrors(), hasSize( 1 ) );
+        assertThat( response.getValidationWarnings(), hasSize( 0 ) );
+        assertThat( response.getValidationErrors().get( 0 ), hasKey("id") );
+    }
+    @Test
+    public void repoClashGroupId()
+    {
+        ApplicationValidationContext ctx = new ApplicationValidationContext();
+        ctx.addExistingRepositoryGroupIds();
+        ctx.getExistingRepositoryGroupIds().add( "id" );
+        CRepository repo = new CRepository();
+        repo.setId( "id" );
+        repo.setLocalStatus( LocalStatus.IN_SERVICE.toString() );
+        repo.setName( "name" );
+
+        ValidationResponse response = underTest.validateRepository( ctx, repo );
+
+        assertThat( response.isValid(), is( false ) );
+        assertThat( response.isModified(), is( false ) );
+
+        assertThat( response.getValidationErrors(), hasSize( 1 ) );
+        assertThat( response.getValidationWarnings(), hasSize( 0 ) );
+        assertThat( response.getValidationErrors().get( 0 ), hasKey("id") );
+    }
+
+    @Test
+    public void repoClashShadowId()
+    {
+        ApplicationValidationContext ctx = new ApplicationValidationContext();
+        ctx.addExistingRepositoryShadowIds();
+        ctx.getExistingRepositoryShadowIds().add( "id" );
+        CRepository repo = new CRepository();
+        repo.setId( "id" );
+        repo.setLocalStatus( LocalStatus.IN_SERVICE.toString() );
+        repo.setName( "name" );
+
+        ValidationResponse response = underTest.validateRepository( ctx, repo );
+
+        assertThat( response.isValid(), is( false ) );
+        assertThat( response.isModified(), is( false ) );
+
+        assertThat( response.getValidationErrors(), hasSize( 1 ) );
+        assertThat( response.getValidationWarnings(), hasSize( 0 ) );
+        assertThat( response.getValidationErrors().get( 0 ), hasKey("id") );
+    }
+
+    @Test
+    public void repoEmptyName()
+    {
+        ApplicationValidationContext ctx = new ApplicationValidationContext();
+        CRepository repo = new CRepository();
+        repo.setId( "id" );
+        repo.setLocalStatus( LocalStatus.IN_SERVICE.toString() );
+
+        ValidationResponse response = underTest.validateRepository( ctx, repo );
+
+        assertThat( response.isValid(), is( true ) );
+        assertThat( response.isModified(), is( true ) );
+
+        assertThat( response.getValidationErrors(), hasSize( 0 ) );
+        assertThat( response.getValidationWarnings(), hasSize( 1 ) );
+        ValidationMessage actual = response.getValidationWarnings().get( 0 );
+        assertThat( actual, hasKey("id") );
     }
 }

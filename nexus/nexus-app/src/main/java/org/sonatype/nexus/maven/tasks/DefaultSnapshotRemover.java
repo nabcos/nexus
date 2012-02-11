@@ -1,20 +1,14 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.maven.tasks;
 
@@ -26,14 +20,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeSet;
 
-import org.apache.maven.index.artifact.Gav;
 import org.codehaus.plexus.component.annotations.Component;
 import org.codehaus.plexus.component.annotations.Requirement;
-import org.codehaus.plexus.logging.AbstractLogEnabled;
-import org.sonatype.aether.util.version.GenericVersionScheme;
-import org.sonatype.aether.version.InvalidVersionSpecificationException;
-import org.sonatype.aether.version.Version;
-import org.sonatype.aether.version.VersionScheme;
+import org.sonatype.nexus.logging.AbstractLoggingComponent;
+import org.sonatype.nexus.logging.Slf4jPlexusLogger;
 import org.sonatype.nexus.proxy.IllegalOperationException;
 import org.sonatype.nexus.proxy.ItemNotFoundException;
 import org.sonatype.nexus.proxy.NoSuchRepositoryException;
@@ -48,23 +38,30 @@ import org.sonatype.nexus.proxy.maven.MavenProxyRepository;
 import org.sonatype.nexus.proxy.maven.MavenRepository;
 import org.sonatype.nexus.proxy.maven.RecreateMavenMetadataWalkerProcessor;
 import org.sonatype.nexus.proxy.maven.RepositoryPolicy;
+import org.sonatype.nexus.proxy.maven.gav.Gav;
+import org.sonatype.nexus.proxy.maven.version.GenericVersionParser;
+import org.sonatype.nexus.proxy.maven.version.InvalidVersionSpecificationException;
+import org.sonatype.nexus.proxy.maven.version.Version;
+import org.sonatype.nexus.proxy.maven.version.VersionParser;
 import org.sonatype.nexus.proxy.registry.ContentClass;
 import org.sonatype.nexus.proxy.registry.RepositoryRegistry;
 import org.sonatype.nexus.proxy.repository.GroupRepository;
-import org.sonatype.nexus.proxy.repository.LocalStatus;
+import org.sonatype.nexus.proxy.repository.HostedRepository;
 import org.sonatype.nexus.proxy.repository.Repository;
 import org.sonatype.nexus.proxy.storage.UnsupportedStorageOperationException;
 import org.sonatype.nexus.proxy.walker.AbstractWalkerProcessor;
 import org.sonatype.nexus.proxy.walker.DefaultWalkerContext;
 import org.sonatype.nexus.proxy.walker.DottedStoreWalkerFilter;
+import org.sonatype.nexus.proxy.walker.ParentOMatic;
 import org.sonatype.nexus.proxy.walker.Walker;
 import org.sonatype.nexus.proxy.walker.WalkerContext;
 import org.sonatype.nexus.proxy.walker.WalkerException;
+import org.sonatype.nexus.proxy.wastebasket.DeleteOperation;
 import org.sonatype.nexus.util.ItemPathUtils;
 import org.sonatype.scheduling.TaskUtil;
 
 /**
- * The Class SnapshotRemoverJob. After a succesful run, the job guarantees that there will remain at least
+ * The Class SnapshotRemoverJob. After a successful run, the job guarantees that there will remain at least
  * minCountOfSnapshotsToKeep (but maybe more) snapshots per one snapshot collection by removing all older from
  * removeSnapshotsOlderThanDays. If should remove snaps if their release counterpart exists, the whole GAV will be
  * removed.
@@ -73,9 +70,10 @@ import org.sonatype.scheduling.TaskUtil;
  */
 @Component( role = SnapshotRemover.class )
 public class DefaultSnapshotRemover
-    extends AbstractLogEnabled
+    extends AbstractLoggingComponent
     implements SnapshotRemover
 {
+
     @Requirement
     private RepositoryRegistry repositoryRegistry;
 
@@ -85,7 +83,7 @@ public class DefaultSnapshotRemover
     @Requirement( hint = "maven2" )
     private ContentClass contentClass;
 
-    private VersionScheme versionScheme = new GenericVersionScheme();
+    private VersionParser versionScheme = new GenericVersionParser();
 
     protected RepositoryRegistry getRepositoryRegistry()
     {
@@ -166,7 +164,7 @@ public class DefaultSnapshotRemover
                                                                                   SnapshotRemovalRequest request )
     {
         TaskUtil.checkInterruption();
-        
+
         SnapshotRemovalRepositoryResult result = new SnapshotRemovalRepositoryResult( repository.getId(), 0, 0, true );
 
         if ( !repository.getLocalStatus().shouldServiceRequest() )
@@ -195,14 +193,16 @@ public class DefaultSnapshotRemover
                     + repository.getLocalUrl() );
         }
 
-        request.getMetadataRebuildPaths().clear();
+        final ParentOMatic parentOMatic = new ParentOMatic();
 
         // create a walker to collect deletables and let it loose on collections only
         SnapshotRemoverWalkerProcessor snapshotRemoveProcessor =
-            new SnapshotRemoverWalkerProcessor( repository, request );
+            new SnapshotRemoverWalkerProcessor( repository, request, parentOMatic );
 
         DefaultWalkerContext ctxMain =
             new DefaultWalkerContext( repository, new ResourceStoreRequest( "/" ), new DottedStoreWalkerFilter() );
+
+        ctxMain.getContext().put( DeleteOperation.DELETE_OPERATION_CTX_KEY, getDeleteOperation( request ) );
 
         ctxMain.getProcessors().add( snapshotRemoveProcessor );
 
@@ -225,33 +225,48 @@ public class DefaultSnapshotRemover
                     + " files on repository " + repository.getId() );
         }
 
-        repository.expireCaches( new ResourceStoreRequest( RepositoryItemUid.PATH_ROOT ) );
-
-        RecreateMavenMetadataWalkerProcessor metadataRebuildProcessor =
-            new RecreateMavenMetadataWalkerProcessor( getLogger() );
-
-        for ( String path : request.getMetadataRebuildPaths() )
+        // if we are processing a hosted-snapshot repository, we need to rebuild maven metadata
+        // without this if below, the walk would happen against proxy repositories too, but doing nothing!
+        if ( repository.getRepositoryKind().isFacetAvailable( HostedRepository.class ) )
         {
-            DefaultWalkerContext ctxMd =
-                new DefaultWalkerContext( repository, new ResourceStoreRequest( path ), new DottedStoreWalkerFilter() );
+            // expire NFC since we might create new maven metadata files
+            repository.expireNotFoundCaches( new ResourceStoreRequest( RepositoryItemUid.PATH_ROOT ) );
 
-            ctxMd.getProcessors().add( metadataRebuildProcessor );
+            RecreateMavenMetadataWalkerProcessor metadataRebuildProcessor =
+                new RecreateMavenMetadataWalkerProcessor( Slf4jPlexusLogger.getPlexusLogger( getLogger() ),
+                    getDeleteOperation( request ) );
 
-            try
+            for ( String path : parentOMatic.getMarkedPaths() )
             {
-                walker.walk( ctxMd );
-            }
-            catch ( WalkerException e )
-            {
-                if ( !( e.getCause() instanceof ItemNotFoundException ) )
+                TaskUtil.checkInterruption();
+
+                DefaultWalkerContext ctxMd =
+                    new DefaultWalkerContext( repository, new ResourceStoreRequest( path ),
+                        new DottedStoreWalkerFilter() );
+
+                ctxMd.getProcessors().add( metadataRebuildProcessor );
+
+                try
                 {
-                    // do not ignore it
-                    throw e;
+                    walker.walk( ctxMd );
+                }
+                catch ( WalkerException e )
+                {
+                    if ( !( e.getCause() instanceof ItemNotFoundException ) )
+                    {
+                        // do not ignore it
+                        throw e;
+                    }
                 }
             }
         }
 
         return result;
+    }
+
+    private DeleteOperation getDeleteOperation( final SnapshotRemovalRequest request )
+    {
+        return request.isDeleteImmediately() ? DeleteOperation.DELETE_PERMANENTLY : DeleteOperation.MOVE_TO_TRASH;
     }
 
     private void logDetails( SnapshotRemovalRequest request )
@@ -271,12 +286,14 @@ public class DefaultSnapshotRemover
             getLogger().debug( "    MinCountOfSnapshotsToKeep: " + request.getMinCountOfSnapshotsToKeep() );
             getLogger().debug( "    RemoveSnapshotsOlderThanDays: " + request.getRemoveSnapshotsOlderThanDays() );
             getLogger().debug( "    RemoveIfReleaseExists: " + request.isRemoveIfReleaseExists() );
+            getLogger().debug( "    DeleteImmediately: " + request.isDeleteImmediately() );
         }
     }
 
     private class SnapshotRemoverWalkerProcessor
         extends AbstractWalkerProcessor
     {
+
         private final MavenRepository repository;
 
         private final SnapshotRemovalRequest request;
@@ -286,6 +303,8 @@ public class DefaultSnapshotRemover
 
         private final Map<Version, List<StorageFileItem>> deletableSnapshotsAndFiles =
             new HashMap<Version, List<StorageFileItem>>();
+
+        private final ParentOMatic collectionNodes;
 
         private final long dateThreshold;
 
@@ -297,11 +316,12 @@ public class DefaultSnapshotRemover
 
         private int deletedFiles = 0;
 
-        public SnapshotRemoverWalkerProcessor( MavenRepository repository, SnapshotRemovalRequest request )
+        public SnapshotRemoverWalkerProcessor( MavenRepository repository, SnapshotRemovalRequest request,
+                                               final ParentOMatic collectionNodes )
         {
             this.repository = repository;
-
             this.request = request;
+            this.collectionNodes = collectionNodes;
 
             int days = request.getRemoveSnapshotsOlderThanDays();
 
@@ -474,7 +494,7 @@ public class DefaultSnapshotRemover
                             // preserve possible subdirs
                             if ( !( item instanceof StorageCollectionItem ) )
                             {
-                                repository.deleteItem( false, new ResourceStoreRequest( item ) );
+                                repository.deleteItem( false, createResourceStoreRequest( item, context ) );
                             }
                         }
                         catch ( ItemNotFoundException e )
@@ -552,7 +572,7 @@ public class DefaultSnapshotRemover
 
                             gav = (Gav) file.getItemContext().get( Gav.class.getName() );
 
-                            repository.deleteItem( false, new ResourceStoreRequest( file ) );
+                            repository.deleteItem( false, createResourceStoreRequest( file, context ) );
 
                             deletedFiles++;
                         }
@@ -583,15 +603,12 @@ public class DefaultSnapshotRemover
             // all snapshot files are deleted
             if ( !deletableSnapshotsAndFiles.isEmpty() && remainingSnapshotsAndFiles.isEmpty() )
             {
-                String parentPath = ItemPathUtils.getParentPath( coll.getPath() );
-
-                request.getMetadataRebuildPaths().add( parentPath );
+                collectionNodes.addAndMarkPath( ItemPathUtils.getParentPath( coll.getPath() ) );
             }
             else
             {
-                request.getMetadataRebuildPaths().add( coll.getPath() );
+                collectionNodes.addAndMarkPath( coll.getPath() );
             }
-
         }
 
         private void removeDirectoryIfEmpty( StorageCollectionItem coll )
@@ -610,7 +627,8 @@ public class DefaultSnapshotRemover
                         "Removing the empty directory leftover: UID=" + coll.getRepositoryItemUid().toString() );
                 }
 
-                repository.deleteItem( false, new ResourceStoreRequest( coll ) );
+                // directory is empty, never move to trash
+                repository.deleteItem( false, createResourceStoreRequest( coll, DeleteOperation.DELETE_PERMANENTLY ) );
             }
             catch ( ItemNotFoundException e )
             {
@@ -658,14 +676,17 @@ public class DefaultSnapshotRemover
 
                             Gav releaseGav =
                                 new Gav( snapshotGav.getGroupId(), snapshotGav.getArtifactId(), releaseVersion,
-                                    snapshotGav.getClassifier(), snapshotGav.getExtension(), null, null, null, 
-                                    false, null, false, null );
+                                    snapshotGav.getClassifier(), snapshotGav.getExtension(), null, null, null, false,
+                                    null, false, null );
 
                             String path = mrepository.getGavCalculator().gavToPath( releaseGav );
 
                             ResourceStoreRequest req = new ResourceStoreRequest( path, true );
 
                             req.getRequestContext().putAll( context );
+
+                            getLogger().debug( "Checking for release counterpart in repository '{}' and path '{}'",
+                                mrepository.getId(), req.toString() );
 
                             mrepository.retrieveItem( false, req );
 
@@ -678,12 +699,34 @@ public class DefaultSnapshotRemover
                         catch ( Exception e )
                         {
                             // nothing
+                            getLogger().debug( "Unexpected exception!", e );
                         }
                     }
                 }
             }
 
             return false;
+        }
+
+        private ResourceStoreRequest createResourceStoreRequest( final StorageItem item, final WalkerContext ctx )
+        {
+            ResourceStoreRequest request = new ResourceStoreRequest( item );
+
+            if ( ctx.getContext().containsKey( DeleteOperation.DELETE_OPERATION_CTX_KEY ) )
+            {
+                request.getRequestContext().put( DeleteOperation.DELETE_OPERATION_CTX_KEY,
+                    ctx.getContext().get( DeleteOperation.DELETE_OPERATION_CTX_KEY ) );
+            }
+
+            return request;
+        }
+
+        private ResourceStoreRequest createResourceStoreRequest( final StorageCollectionItem item,
+                                                                 final DeleteOperation operation )
+        {
+            ResourceStoreRequest request = new ResourceStoreRequest( item );
+            request.getRequestContext().put( DeleteOperation.DELETE_OPERATION_CTX_KEY, operation );
+            return request;
         }
 
         public int getDeletedSnapshots()

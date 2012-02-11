@@ -1,16 +1,25 @@
-<!-- Copyright (c) 2008-2011 Sonatype, Inc. All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions. This program is free software: you can redistribute it and/or modify it only under the terms of the
-  GNU Affero General Public License Version 3 as published by the Free Software Foundation. This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-  PURPOSE. See the GNU Affero General Public License Version 3 for more details. You should have received a copy of the GNU Affero General Public License Version 3 along with this program. If not, see http://www.gnu.org/licenses. Sonatype Nexus (TM) Open Source
-  Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation. All other trademarks are the property of their respective
-  owners. -->
-  <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+<!--
+
+    Sonatype Nexus (TM) Open Source Version
+    Copyright (c) 2007-2012 Sonatype, Inc.
+    All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
+
+    This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+    which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
+
+    Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+    of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+    Eclipse Foundation. All other trademarks are the property of their respective owners.
+
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
 
   <modelVersion>4.0.0</modelVersion>
 
   <parent>
     <groupId>org.sonatype.nexus</groupId>
     <artifactId>nexus-test-harness</artifactId>
-    <version>1.9.2-SNAPSHOT</version>
+    <version>2.1-SNAPSHOT</version>
   </parent>
 
   <artifactId>nexus-test-harness-its</artifactId>
@@ -28,14 +37,6 @@
   </properties>
 
   <build>
-
-    <testResources>
-      <testResource>
-        <targetPath>${project.build.testOutputDirectory}</targetPath>
-        <filtering>true</filtering>
-        <directory>${basedir}/src/test/resources</directory>
-      </testResource>
-    </testResources>
 
     <plugins>
       <plugin>
@@ -90,19 +91,19 @@
       <plugin>
         <groupId>org.sonatype.plugins</groupId>
         <artifactId>app-lifecycle-maven-plugin</artifactId>
-        <version>1.4-SNAPSHOT</version>
+        <version>${applifecycle.version}</version>
         <extensions>true</extensions>
         <dependencies>
           <dependency>
             <groupId>org.sonatype.plugins</groupId>
             <artifactId>app-lifecycle-nexus</artifactId>
-            <version>1.4-SNAPSHOT</version>
+            <version>${applifecycle.version}</version>
           </dependency>
         </dependencies>
       </plugin>
 
       <plugin>
-        <groupId>org.sonatype.plugins</groupId>
+        <groupId>org.sonatype.nexus.plugins</groupId>
         <artifactId>nexus-test-environment-maven-plugin</artifactId>
         <executions>
           <execution>
@@ -163,15 +164,12 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-failsafe-plugin</artifactId>
         <configuration>
-          <argLine>-Xmx512M</argLine>
+          <forkMode>once</forkMode> <!-- "always" for the latest resort, "once" is actually what we want -->
+          <argLine>-XX:PermSize=220m -XX:MaxPermSize=220m -Xmx600M -XX:+HeapDumpOnOutOfMemoryError</argLine>
           <excludes>
             <exclude>**Suite*</exclude>
-            <!-- START This are start/stop tests, shouldn't be runned -->
-            <exclude>**/Nexus758ServiceStability.*</exclude>
-            <exclude>**/Nexus758StatusService.*</exclude>
-            <exclude>**/Nexus748MultipleStart.*</exclude>
+            <!-- cargo tests, run on a separated profile -->
             <exclude>**/Nexus3860*</exclude>
-            <!-- END This are start/stop tests, shouldn't be runned -->
             <!-- inner classes -->
             <exclude>**/*$*.*</exclude>
           </excludes>
@@ -187,6 +185,7 @@
       <groupId>org.sonatype.nexus</groupId>
       <artifactId>nexus-test-harness-launcher</artifactId>
       <version>${project.version}</version>
+      <scope>test</scope>
       <exclusions>
         <exclusion>
           <groupId>junit</groupId>
@@ -204,17 +203,13 @@
     <dependency>
       <groupId>org.testng</groupId>
       <artifactId>testng</artifactId>
-      <version>5.11</version>
-      <classifier>jdk15</classifier>
+      <version>6.1.1</version>
+      <scope>test</scope>
       <exclusions>
         <exclusion>
           <groupId>junit</groupId>
           <artifactId>junit</artifactId>
         </exclusion>
-        <!-- <exclusion> -->
-        <!-- <groupId>com.google.inject</groupId> -->
-        <!-- <artifactId>guice</artifactId> -->
-        <!-- </exclusion> -->
       </exclusions>
     </dependency>
 
@@ -229,13 +224,18 @@
       <artifactId>hamcrest-library</artifactId>
     </dependency>
 
+    <dependency>
+      <groupId>org.sonatype.http-testing-harness</groupId>
+      <artifactId>server-provider</artifactId>
+      <scope>test</scope>
+    </dependency>
+
     <!-- Deps needed by some ITs (they use classes from these below) -->
 
     <!-- NEXUS-2862 -->
     <dependency>
       <groupId>org.sonatype.security.realms</groupId>
       <artifactId>security-url-realm</artifactId>
-      <version>${plexus-security.version}</version>
     </dependency>
 
     <!-- NEXUS-2490 -->
@@ -252,17 +252,17 @@
       <version>${project.version}</version>
     </dependency>
 
+    <!-- NEXUS-639 (Timeline) -->
+    <dependency>
+      <groupId>org.sonatype.nexus.plugins</groupId>
+      <artifactId>nexus-timeline-plugin</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+
     <!-- NEXUS-156 (RRB perms) -->
     <dependency>
       <groupId>org.sonatype.nexus.plugins</groupId>
       <artifactId>nexus-rrb-plugin</artifactId>
-      <version>${project.version}</version>
-    </dependency>
-
-    <!-- NEXUS-3699 -->
-    <dependency>
-      <groupId>org.sonatype.nexus.plugins</groupId>
-      <artifactId>nexus-capabilities-plugin</artifactId>
       <version>${project.version}</version>
     </dependency>
 
@@ -316,8 +316,15 @@
   </dependencies>
 
   <profiles>
+
     <profile>
       <id>ahc-provider</id>
+      <activation>
+        <property>
+          <name>rrs</name>
+          <value>async-http-client</value>
+        </property>
+      </activation>
       <build>
         <plugins>
           <plugin>
@@ -326,6 +333,31 @@
             <configuration>
               <systemPropertyVariables>
                 <nexus.default.http.provider>async-http-client</nexus.default.http.provider>
+                <nexus.default.http.providerForced>true</nexus.default.http.providerForced>
+              </systemPropertyVariables>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+
+    <profile>
+      <id>apacheHttpClient4x-provider</id>
+      <activation>
+        <property>
+          <name>rrs</name>
+          <value>apacheHttpClient4x</value>
+        </property>
+      </activation>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-failsafe-plugin</artifactId>
+            <configuration>
+              <systemPropertyVariables>
+                <nexus.default.http.provider>apacheHttpClient4x</nexus.default.http.provider>
+                <nexus.default.http.providerForced>true</nexus.default.http.providerForced>
               </systemPropertyVariables>
             </configuration>
           </plugin>
@@ -485,30 +517,20 @@
     </profile>
 
     <profile>
-      <!-- http://www.yourkit.com/docs/80/help/agent.jsp -->
       <id>yourkit-profile</id>
       <activation>
         <property>
-          <name>yourkit.home</name>
+          <name>yourkit.agent</name>
         </property>
       </activation>
-      <!-- This is the path on Velo's machine ;) <properties> <yourkit.home>C:\Arquivos de programas\YourKit Java Profiler 8.0.13</yourkit.home> </properties -->
-      <dependencies>
-        <dependency>
-          <groupId>com.yourkit</groupId>
-          <artifactId>yjp</artifactId>
-          <version>8.0.13</version>
-          <scope>system</scope>
-          <systemPath>${yourkit.home}\lib\yjp.jar</systemPath>
-        </dependency>
-      </dependencies>
       <build>
         <plugins>
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-surefire-plugin</artifactId>
+            <artifactId>maven-failsafe-plugin</artifactId>
             <configuration>
-              <argLine>-agentpath:"${yourkit.home}\bin\win32\yjpagent.dll"</argLine>
+            <!-- for Yourkit session, we left more memory intentionally -->
+              <argLine>-XX:PermSize=220m -XX:MaxPermSize=220m -Xmx600M -XX:+HeapDumpOnOutOfMemoryError -agentpath:"${yourkit.agent}"</argLine>
             </configuration>
           </plugin>
         </plugins>

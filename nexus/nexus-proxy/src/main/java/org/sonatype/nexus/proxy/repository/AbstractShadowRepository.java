@@ -1,24 +1,19 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.proxy.repository;
 
 import org.codehaus.plexus.component.annotations.Requirement;
+import org.sonatype.nexus.proxy.AccessDeniedException;
 import org.sonatype.nexus.proxy.IllegalOperationException;
 import org.sonatype.nexus.proxy.ItemNotFoundException;
 import org.sonatype.nexus.proxy.NoSuchRepositoryException;
@@ -38,7 +33,6 @@ import org.sonatype.nexus.proxy.walker.AbstractFileWalkerProcessor;
 import org.sonatype.nexus.proxy.walker.DefaultWalkerContext;
 import org.sonatype.nexus.proxy.walker.WalkerContext;
 import org.sonatype.nexus.proxy.walker.WalkerException;
-import org.sonatype.plexus.appevents.Event;
 
 /**
  * The Class ShadowRepository.
@@ -51,6 +45,11 @@ public abstract class AbstractShadowRepository
 {
     @Requirement
     private RepositoryRegistry repositoryRegistry;
+    
+    protected RepositoryRegistry getRepositoryRegistry()
+    {
+        return repositoryRegistry;
+    }
 
     @Override
     protected AbstractShadowRepositoryConfiguration getExternalConfiguration( boolean forModification )
@@ -58,46 +57,52 @@ public abstract class AbstractShadowRepository
         return (AbstractShadowRepositoryConfiguration) super.getExternalConfiguration( forModification );
     }
 
-    public String getMasterRepositoryId()
-    {
-        return getExternalConfiguration( false ).getMasterRepositoryId();
-    }
-
-    public void setMasterRepositoryId( String id )
-        throws NoSuchRepositoryException, IncompatibleMasterRepositoryException
-    {
-        setMasterRepository( repositoryRegistry.getRepository( id ) );
-    }
-
-    public Repository getMasterRepository()
-    {
-        try
-        {
-            return repositoryRegistry.getRepository( getExternalConfiguration( false ).getMasterRepositoryId() );
-        }
-        catch ( NoSuchRepositoryException e )
-        {
-            // erm?
-
-            getLogger().warn(
-                "ShadowRepository ID='" + getId() + "' cannot fetch it's master repository with ID='"
-                    + getMasterRepositoryId() + "'!", e );
-
-            return null;
-        }
-    }
-
+    @Override
     public boolean isSynchronizeAtStartup()
     {
         return getExternalConfiguration( false ).isSynchronizeAtStartup();
     }
 
-    public void setSynchronizeAtStartup( boolean val )
+    @Override
+    public void setSynchronizeAtStartup( final boolean val )
     {
         getExternalConfiguration( true ).setSynchronizeAtStartup( val );
     }
 
-    public void setMasterRepository( Repository masterRepository )
+    @Deprecated
+    @Override
+    public String getMasterRepositoryId()
+    {
+        return getMasterRepository().getId();
+    }
+
+    @Deprecated
+    @Override
+    public void setMasterRepositoryId( final String repositoryId )
+        throws IncompatibleMasterRepositoryException, NoSuchRepositoryException
+    {
+        setMasterRepository( getRepositoryRegistry().getRepository( repositoryId ) );
+    }
+
+    @Override
+    public Repository getMasterRepository()
+    {
+        try
+        {
+            return getRepositoryRegistry().getRepository( getExternalConfiguration( false ).getMasterRepositoryId() );
+        }
+        catch ( NoSuchRepositoryException e )
+        {
+            getLogger().warn(
+                "ShadowRepository ID='" + getId() + "' cannot fetch it's master repository with ID='"
+                    + getExternalConfiguration( false ).getMasterRepositoryId() + "'!", e );
+
+            return null;
+        }
+    }
+
+    @Override
+    public void setMasterRepository( final Repository masterRepository )
         throws IncompatibleMasterRepositoryException
     {
         if ( getMasterRepositoryContentClass().getId().equals( masterRepository.getRepositoryContentClass().getId() ) )
@@ -111,7 +116,7 @@ public abstract class AbstractShadowRepository
     }
 
     /**
-     * The shadow is delegating it's availability to it's master, but we can still shot down the shadow onlu.
+     * The shadow is delegating it's availability to it's master, but we can still shot down the shadow only.
      */
     @Override
     public LocalStatus getLocalStatus()
@@ -122,32 +127,25 @@ public abstract class AbstractShadowRepository
     }
 
     @Override
-    public void onEvent( Event<?> evt )
+    public void onRepositoryItemEvent( final RepositoryItemEvent ievt )
     {
-        super.onEvent( evt );
-
-        if ( evt instanceof RepositoryItemEvent )
+        // is this event coming from our master?
+        if ( getMasterRepository() == ievt.getRepository() )
         {
-            RepositoryItemEvent ievt = (RepositoryItemEvent) evt;
-
-            // is this event coming from our master?
-            if ( getMasterRepository() == ievt.getRepository() )
+            try
             {
-                try
+                if ( ievt instanceof RepositoryItemEventStore || ievt instanceof RepositoryItemEventCache )
                 {
-                    if ( ievt instanceof RepositoryItemEventStore || ievt instanceof RepositoryItemEventCache )
-                    {
-                        createLink( ievt.getItem() );
-                    }
-                    else if ( ievt instanceof RepositoryItemEventDelete )
-                    {
-                        deleteLink( ievt.getItem() );
-                    }
+                    createLink( ievt.getItem() );
                 }
-                catch ( Exception e )
+                else if ( ievt instanceof RepositoryItemEventDelete )
                 {
-                    getLogger().warn( "Could not sync shadow repository because of exception", e );
+                    deleteLink( ievt.getItem() );
                 }
+            }
+            catch ( Exception e )
+            {
+                getLogger().warn( "Could not sync shadow repository because of exception", e );
             }
         }
     }
@@ -158,7 +156,7 @@ public abstract class AbstractShadowRepository
     protected abstract StorageLinkItem createLink( StorageItem item )
         throws UnsupportedStorageOperationException, IllegalOperationException, StorageException;
 
-    protected void synchronizeLink( StorageItem item )
+    protected void synchronizeLink( final StorageItem item )
         throws UnsupportedStorageOperationException, IllegalOperationException, StorageException
     {
         createLink( item );
@@ -167,6 +165,7 @@ public abstract class AbstractShadowRepository
     /**
      * Synchronize with master.
      */
+    @Override
     public void synchronizeWithMaster()
     {
         if ( !getLocalStatus().shouldServiceRequest() )
@@ -176,11 +175,11 @@ public abstract class AbstractShadowRepository
 
         getLogger().info( "Syncing shadow " + getId() + " with master repository " + getMasterRepository().getId() );
 
-        ResourceStoreRequest root = new ResourceStoreRequest( RepositoryItemUid.PATH_ROOT, true );
+        final ResourceStoreRequest root = new ResourceStoreRequest( RepositoryItemUid.PATH_ROOT, true );
 
-        expireCaches( root );
+        expireNotFoundCaches( root );
 
-        AbstractFileWalkerProcessor sw = new AbstractFileWalkerProcessor()
+        final AbstractFileWalkerProcessor sw = new AbstractFileWalkerProcessor()
         {
             @Override
             protected void processFileItem( WalkerContext context, StorageFileItem item )
@@ -190,7 +189,7 @@ public abstract class AbstractShadowRepository
             }
         };
 
-        DefaultWalkerContext ctx = new DefaultWalkerContext( getMasterRepository(), root );
+        final DefaultWalkerContext ctx = new DefaultWalkerContext( getMasterRepository(), root );
 
         ctx.getProcessors().add( sw );
 
@@ -209,10 +208,17 @@ public abstract class AbstractShadowRepository
         }
     }
 
-    protected StorageItem doRetrieveItemFromMaster( ResourceStoreRequest request )
+    protected StorageItem doRetrieveItemFromMaster( final ResourceStoreRequest request )
         throws IllegalOperationException, ItemNotFoundException, StorageException
     {
-        return ( (AbstractRepository) getMasterRepository() ).doRetrieveItem( request );
+        try
+        {
+            return getMasterRepository().retrieveItem( request );
+        }
+        catch ( AccessDeniedException e )
+        {
+            // if client has no access to content over shadow, we just hide the fact
+            throw new ItemNotFoundException( request, e );
+        }
     }
-
 }

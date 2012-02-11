@@ -1,36 +1,35 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
 
-    Copyright (c) 2008-2011 Sonatype, Inc.
-    All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+    Sonatype Nexus (TM) Open Source Version
+    Copyright (c) 2007-2012 Sonatype, Inc.
+    All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
 
-    This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
-    Public License Version 3 as published by the Free Software Foundation.
+    This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+    which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
 
-    This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
-    warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
-    for more details.
-
-    You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
-    http://www.gnu.org/licenses.
-
-    Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
-    Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
-    All other trademarks are the property of their respective owners.
+    Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+    of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+    Eclipse Foundation. All other trademarks are the property of their respective owners.
 
 -->
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
 
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>org.sonatype.nexus</groupId>
   <artifactId>nexus-aggregator</artifactId>
-  <version>1-SNAPSHOT</version>
+  <version>2.1-SNAPSHOT</version>
 
   <packaging>pom</packaging>
-  <name>Nexus Aggregator</name>
+  <name>Nexus : Aggregator</name>
   <description>Sonatype Nexus Aggregator</description>
+
+  <scm>
+    <connection>scm:git:git://github.com/sonatype/nexus.git</connection>
+    <developerConnection>scm:git:git@github.com:sonatype/nexus.git</developerConnection>
+    <url>https://github.com/sonatype/nexus</url>
+  </scm>
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -40,37 +39,76 @@
 
   <modules>
     <module>nexus-runtime-platform</module>
-    <module>nexus-parent</module>
-    <module>nexus</module> 
+    <module>nexus</module>
+    <module>nexus-maven-plugins</module>
   </modules>
-  
+
   <build>
     <plugins>
-        <!-- Manually run with: mvn clean license:format -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-site-plugin</artifactId>
+        <version>3.0-beta-3</version>
+      </plugin>
+      <plugin>
+        <groupId>com.mycila.maven-license-plugin</groupId>
+        <artifactId>maven-license-plugin</artifactId>
+      </plugin>
+    </plugins>
+    <pluginManagement>
+      <plugins>
+        <!-- Manually run with: mvn clean com.mycila.maven-license-plugin:maven-license-plugin:1.9.0:format -->
         <plugin>
           <groupId>com.mycila.maven-license-plugin</groupId>
           <artifactId>maven-license-plugin</artifactId>
           <version>1.9.0</version>
           <configuration>
-            <header>nexus/header.txt</header>
+            <header>header-eplv1.txt</header>
+            <encoding>UTF-8</encoding>
             <strictCheck>true</strictCheck>
             <useDefaultExcludes>false</useDefaultExcludes>
             <includes>
               <include>**/*.java</include>
-              <include>**/*.js</include>
               <include>**/*.vm</include>
               <include>**/*.xml</include>
               <include>**/*.groovy</include>
               <include>**/*.aj</include>
+              <include>**/*.css</include>
+              <include>**/*.html</include>
+              <include>**/*.js</include>
             </includes>
             <excludes>
+              <!-- we have target pattern in this format because of target package in nexus-api and nexus-proxy modules -->
+              <exclude>**/nexus*/target/**</exclude>
+              <exclude>**/nexus-ldap-plugin-parent/ldap-common/target/**</exclude>
               <exclude>**/ext-2.3/**</exclude>
               <exclude>**/js/filetree/**</exclude>
               <exclude>**/editarea_0_8_2/**</exclude>
+              <exclude>**/org/sonatype/security/ldap/dao/password/hash/MD5Crypt.java</exclude>
+              <!-- FIXME is this really a good idea excluding all test resources? -->
               <exclude>**/src/test/resources/**</exclude>
-              <exclude>**/nexus-repository-metadata/**</exclude>
-              <exclude>**/gwt/ext/ui/**.js</exclude>
               <exclude>**/nexus/nexus-test-harness/nexus-test-harness-its/resources/**</exclude>
+              <exclude>**/nexus-repository-metadata/**</exclude>
+              <exclude>**/gwt/ext/ui/**/*.js</exclude>
+              <exclude>**/gwt/ext/ui/**/*.css</exclude>
+              <!-- already has a lgpl license -->
+              <exclude>**/Ext.ux.form.LovCombo.css</exclude>
+              <!-- Apache licensed, see profile -->
+              <exclude>**/nexus-migration-plugin/**</exclude>
+              <!-- grid makes this directory -->
+              <exclude>.maven/**</exclude>
+              <!-- eclipse makes this directory -->
+              <exclude>**/.settings/**</exclude>
+              <!-- temp file created by maven-shade-plugin in basedir, deleted on maven jvm exit but possibly still around during license check -->
+              <exclude>**/dependency-reduced-pom.xml</exclude>
+              <!-- netbeans adds these -->
+              <exclude>**/nbactions*.xml</exclude>
+              <exclude>**/nb-configuration.xml</exclude>
+              <!-- IntelliJ IDEA project directory-->
+              <exclude>**/.idea/**</exclude>
+              <!-- The classes in guava package are copied over from com.google.common.eventbus in order to make then extensible (they are package protected) -->
+              <exclude>**/org/sonatype/nexus/eventbus/internal/guava/**</exclude>
+              <exclude>**/sandbox/**</exclude>
             </excludes>
             <mapping>
               <vm>XML_STYLE</vm>
@@ -78,31 +116,59 @@
               <aj>JAVADOC_STYLE</aj>
             </mapping>
             <properties>
-              <year>2011</year>
+              <year>2012</year>
             </properties>
-            <!-- this is important for muti-module project -->
-            <!-- <aggregate>true</aggregate> -->
+            <!-- this is important for multi-module project -->
+            <aggregate>true</aggregate>
           </configuration>
-      </plugin>
-        
+          <goals>
+            <goal>check</goal>
+          </goals>
+        </plugin>
+
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-release-plugin</artifactId>
+          <version>2.2</version>
+          <configuration>
+            <autoVersionSubmodules>true</autoVersionSubmodules>
+            <!-- forge-parent settings -->
+            <useReleaseProfile>false</useReleaseProfile>
+            <goals>deploy</goals>
+            <!--<arguments>-Prelease</arguments>-->
+            <!-- Use a quick build to verify the tag, and a full build with ITs for the deploy -->
+            <arguments />
+            <preparationGoals /> 
+            <releaseProfiles>release</releaseProfiles>
+            <tagNameFormat>nexus-@{version}</tagNameFormat>
+          </configuration>
+        </plugin>
+        <!-- do not deploy aggregator POM -->
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-deploy-plugin</artifactId>
+          <configuration>
+            <skip>true</skip>
+          </configuration>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+
+  </build>
+  <reporting>
+    <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-site-plugin</artifactId>
-        <version>3.0-beta-3</version>
+        <artifactId>maven-project-info-reports-plugin</artifactId>
+        <version>2.2</version>
       </plugin>
     </plugins>
-  </build>
-      <reporting>
-        <plugins>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-project-info-reports-plugin</artifactId>
-                <version>2.2</version>
-            </plugin>
-        </plugins>
-    </reporting>
+  </reporting>
+
 
   <profiles>
+
+    <!-- produce code coverage reports -->
     <profile>
       <id>coverage</id>
       <build>
@@ -158,16 +224,37 @@
         </plugins>
       </build>
     </profile>
+
+    <!-- use to apply Apache License Version 2 to relevant files: mvn clean com.mycila.maven-license-plugin:maven-license-plugin:1.9.0:format -Plicense-alv2 -->
+    <profile>
+      <id>license-alv2</id>
+      <build>
+        <pluginManagement>
+          <plugins>
+            <plugin>
+              <groupId>com.mycila.maven-license-plugin</groupId>
+              <artifactId>maven-license-plugin</artifactId>
+              <configuration>
+                <header>header-alv2.txt</header>
+                <includes>
+                  <include>nexus/nexus-core-plugins/nexus-migration-plugin/**/*.java</include>
+                  <include>nexus/nexus-core-plugins/nexus-migration-plugin/**/*.vm</include>
+                  <include>nexus/nexus-core-plugins/nexus-migration-plugin/**/*.xml</include>
+                  <include>nexus/nexus-core-plugins/nexus-migration-plugin/**/*.groovy</include>
+                  <include>nexus/nexus-core-plugins/nexus-migration-plugin/**/*.aj</include>
+                  <include>nexus/nexus-core-plugins/nexus-migration-plugin/**/*.css</include>
+                  <include>nexus/nexus-core-plugins/nexus-migration-plugin/**/*.html</include>
+                  <include>nexus/nexus-core-plugins/nexus-migration-plugin/**/*.js</include>
+                </includes>
+                <excludes>
+                  <exclude>**/target/**</exclude>
+                </excludes>
+              </configuration>
+            </plugin>
+          </plugins>
+        </pluginManagement>
+      </build>
+    </profile>
+
   </profiles>
-  <distributionManagement>
-    <repository>
-      <id>localhost</id>
-      <name>dumping to target</name>
-      <url>file://${basedir}/target/repo/</url>
-    </repository>
-     <site>
-      <id>forge-sites</id>
-      <url>dav:${nexus-site-base-url}/</url>
-    </site>
-  </distributionManagement>
 </project>

@@ -1,38 +1,28 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.security.filter.authc;
-
-import java.util.Date;
 
 import javax.servlet.ServletRequest;
 import javax.servlet.ServletResponse;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-import javax.servlet.http.HttpSession;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.shiro.authc.AuthenticationException;
 import org.apache.shiro.authc.AuthenticationToken;
 import org.apache.shiro.authc.ExpiredCredentialsException;
 import org.apache.shiro.authc.UsernamePasswordToken;
 import org.apache.shiro.codec.Base64;
+import org.apache.shiro.session.Session;
 import org.apache.shiro.session.UnknownSessionException;
 import org.apache.shiro.subject.Subject;
 import org.apache.shiro.web.filter.authc.BasicHttpAuthenticationFilter;
@@ -41,13 +31,11 @@ import org.codehaus.plexus.PlexusConstants;
 import org.codehaus.plexus.PlexusContainer;
 import org.codehaus.plexus.component.repository.exception.ComponentLookupException;
 import org.codehaus.plexus.util.StringUtils;
-import org.sonatype.nexus.Nexus;
-import org.sonatype.nexus.auth.AuthenticationItem;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.sonatype.nexus.auth.ClientInfo;
 import org.sonatype.nexus.auth.NexusAuthenticationEvent;
 import org.sonatype.nexus.configuration.application.NexusConfiguration;
-import org.sonatype.nexus.feeds.AuthcAuthzEvent;
-import org.sonatype.nexus.feeds.FeedRecorder;
-import org.sonatype.nexus.proxy.access.AccessManager;
 import org.sonatype.nexus.rest.RemoteIPFinder;
 import org.sonatype.nexus.security.filter.NexusJSecurityFilter;
 import org.sonatype.plexus.appevents.ApplicationEventMulticaster;
@@ -63,13 +51,50 @@ public class NexusHttpAuthenticationFilter
 
     public static final String ANONYMOUS_LOGIN = "nexus.anonynmous";
 
-    private final Log logger = LogFactory.getLog( this.getClass() );
+    private final Logger logger = LoggerFactory.getLogger( getClass() );
 
     private boolean fakeAuthScheme;
 
-    private AuthcAuthzEvent currentAuthcEvt;
+    // this comes from attributes set by plexus helper listener (nexus-web-utils module)
+    protected PlexusContainer plexusContainer;
 
-    protected Log getLogger()
+    // this comes from Plexus IoC but we need to "lift" them manually, no injection here
+    private NexusConfiguration nexusConfiguration;
+
+    // this comes from Plexus IoC but we need to "lift" them manually, no injection here
+    private ApplicationEventMulticaster applicationEventMulticaster;
+
+    protected void onFilterConfigSet()
+        throws Exception
+    {
+        super.onFilterConfigSet();
+
+        plexusContainer = (PlexusContainer) getAttribute( PlexusConstants.PLEXUS_KEY );
+
+        // this might be null, at least the old removed code was prepared for it (why? when? -- cstamas)
+        try
+        {
+            applicationEventMulticaster = plexusContainer.lookup( ApplicationEventMulticaster.class );
+        }
+        catch ( ComponentLookupException e )
+        {
+            applicationEventMulticaster = null;
+        }
+
+        nexusConfiguration = plexusContainer.lookup( NexusConfiguration.class );
+    }
+
+    protected PlexusContainer getPlexusContainer()
+    {
+        return plexusContainer;
+    }
+
+    protected NexusConfiguration getNexusConfiguration()
+    {
+        return nexusConfiguration;
+    }
+
+    protected Logger getLogger()
     {
         return logger;
     }
@@ -97,21 +122,6 @@ public class NexusHttpAuthenticationFilter
             setAuthcScheme( HttpServletRequest.BASIC_AUTH );
             setAuthzScheme( HttpServletRequest.BASIC_AUTH );
         }
-    }
-
-    protected Nexus getNexus()
-    {
-        return (Nexus) getAttribute( Nexus.class.getName() );
-    }
-
-    protected NexusConfiguration getNexusConfiguration()
-    {
-        return (NexusConfiguration) getAttribute( NexusConfiguration.class.getName() );
-    }
-
-    protected PlexusContainer getPlexusContainer()
-    {
-        return (PlexusContainer) getAttribute( PlexusConstants.PLEXUS_KEY );
     }
 
     @Override
@@ -203,10 +213,9 @@ public class NexusHttpAuthenticationFilter
 
     protected boolean executeAnonymousLogin( ServletRequest request, ServletResponse response )
     {
-        if ( getLogger().isDebugEnabled() )
-        {
-            getLogger().debug( "Attempting to authenticate Subject as Anonymous request..." );
-        }
+        getLogger().debug( "Attempting to authenticate Subject as Anonymous request..." );
+
+        boolean anonymousLoginSuccessful = false;
 
         Subject subject = getSubject( request, response );
 
@@ -219,15 +228,36 @@ public class NexusHttpAuthenticationFilter
             request.setAttribute( ANONYMOUS_LOGIN, Boolean.TRUE );
 
             subject.login( usernamePasswordToken );
+            anonymousLoginSuccessful = true;
+        }
+        catch ( UnknownSessionException e )
+        {
+            Session anonSession = subject.getSession( false );
 
-            if ( getLogger().isDebugEnabled() )
+            this.getLogger().debug(
+                "Unknown session exception while logging in anonymous user: '{}' with principal '{}'",
+                new Object[] { anonSession, subject.getPrincipal(), e } );
+
+            if ( anonSession != null )
             {
-                getLogger().debug( "Successfully logged in as anonymous" );
+                // clear the session
+                this.getLogger().debug( "Logging out the current anonymous user, to clear the session." );
+                try
+                {
+                    subject.logout();
+                }
+                catch ( UnknownSessionException expectedException )
+                {
+                    this.logger.trace(
+                        "Forced a logout with an Unknown Session so the current subject would get cleaned up.", e );
+                }
+
+                // login again
+                this.getLogger().debug( "Attempting to login as anonymous for the second time." );
+                subject.login( usernamePasswordToken );
+
+                anonymousLoginSuccessful = true;
             }
-
-            postAuthcEvent( request, getNexusConfiguration().getAnonymousUsername(), getUserAgent( request ), true );
-
-            return true;
         }
         catch ( AuthenticationException ae )
         {
@@ -235,10 +265,16 @@ public class NexusHttpAuthenticationFilter
                 "Unable to authenticate user [anonymous] from IP Address "
                     + RemoteIPFinder.findIP( (HttpServletRequest) request ) );
 
-            if ( getLogger().isDebugEnabled() )
-            {
-                getLogger().debug( "Unable to log in subject as anonymous", ae );
-            }
+            getLogger().debug( "Unable to log in subject as anonymous", ae );
+        }
+
+        if ( anonymousLoginSuccessful )
+        {
+            getLogger().debug( "Successfully logged in as anonymous" );
+
+            postAuthcEvent( request, getNexusConfiguration().getAnonymousUsername(), getUserAgent( request ), true );
+
+            return true;
         }
 
         // always default to false. If we've made it to this point in the code, that
@@ -246,99 +282,28 @@ public class NexusHttpAuthenticationFilter
         return false;
     }
 
+    private void postAuthcEvent( ServletRequest request, String username, String userAgent, boolean success )
+    {
+        if ( applicationEventMulticaster != null )
+        {
+            applicationEventMulticaster.notifyEventListeners( new NexusAuthenticationEvent( this, new ClientInfo(
+                username, RemoteIPFinder.findIP( (HttpServletRequest) request ), userAgent ), success ) );
+        }
+    }
+
     @Override
     protected boolean onLoginSuccess( AuthenticationToken token, Subject subject, ServletRequest request,
                                       ServletResponse response )
     {
-        String msg =
-            "Successfully authenticated user [" + token.getPrincipal() + "] from IP Address "
-                + RemoteIPFinder.findIP( (HttpServletRequest) request );
-
-        recordAuthcEvent( request, msg );
-
         postAuthcEvent( request, token.getPrincipal().toString(), getUserAgent( request ), true );
 
         return true;
-    }
-
-    private void postAuthcEvent( ServletRequest request, String username, String userAgent, boolean success )
-    {
-        try
-        {
-            ApplicationEventMulticaster multicaster = getPlexusContainer().lookup( ApplicationEventMulticaster.class );
-
-            multicaster.notifyEventListeners( new NexusAuthenticationEvent( this, new AuthenticationItem( username,
-                RemoteIPFinder.findIP( (HttpServletRequest) request ), userAgent, success ) ) );
-        }
-        catch ( ComponentLookupException e )
-        {
-            getLogger().error( "Unable to lookup component", e );
-        }
-    }
-
-    private void recordAuthcEvent( ServletRequest request, String msg )
-    {
-        // to make feeds entries be more concise, ignore similar events which occurs in a small period of time
-        if ( isSimilarEvent( msg ) )
-        {
-            return;
-        }
-
-        getLogger().debug( msg );
-
-        AuthcAuthzEvent evt = new AuthcAuthzEvent( new Date(), FeedRecorder.SYSTEM_AUTHC, msg );
-
-        String ip = RemoteIPFinder.findIP( (HttpServletRequest) request );
-
-        if ( ip != null )
-        {
-            evt.getEventContext().put( AccessManager.REQUEST_REMOTE_ADDRESS, ip );
-        }
-
-        Nexus nexus = getNexus();
-
-        if ( nexus != null )
-        {
-            try
-            {
-                getNexus().addAuthcAuthzEvent( evt );
-            }
-            catch ( Exception e )
-            {
-                // just neglect it, it should not disturb actual authc operation
-            }
-        }
-
-        currentAuthcEvt = evt;
-    }
-
-    private boolean isSimilarEvent( String msg )
-    {
-        if ( currentAuthcEvt == null )
-        {
-            return false;
-        }
-
-        if ( currentAuthcEvt.getMessage().equals( msg )
-            && ( System.currentTimeMillis() - currentAuthcEvt.getEventDate().getTime() < 2000L ) )
-        {
-            return true;
-        }
-
-        return false;
     }
 
     @Override
     protected boolean onLoginFailure( AuthenticationToken token, AuthenticationException ae, ServletRequest request,
                                       ServletResponse response )
     {
-        String msg =
-            "Unable to authenticate user [" + token.getPrincipal() + "] from IP Address "
-                + RemoteIPFinder.findIP( (HttpServletRequest) request );
-
-        recordAuthcEvent( request, msg );
-        getLogger().debug( msg, ae );
-
         postAuthcEvent( request, token.getPrincipal().toString(), getUserAgent( request ), false );
 
         HttpServletResponse httpResponse = WebUtils.toHttp( response );
@@ -355,28 +320,6 @@ public class NexusHttpAuthenticationFilter
     public void postHandle( ServletRequest request, ServletResponse response )
         throws Exception
     {
-        if ( request.getAttribute( ANONYMOUS_LOGIN ) != null )
-        {
-            try
-            {
-                getSubject( request, response ).logout();
-            }
-            catch( UnknownSessionException e )
-            {
-                // we need to prevent log spam, just log this as trace
-                this.logger.trace( "Failed to find session for anonymous user.", e );
-            }
-            if ( HttpServletRequest.class.isAssignableFrom( request.getClass() ) )
-            {
-                HttpSession session = ( (HttpServletRequest) request ).getSession( false );
-
-                if ( session != null )
-                {
-                    session.invalidate();
-                }
-            }
-        }
-
         if ( request.getAttribute( NexusJSecurityFilter.REQUEST_IS_AUTHZ_REJECTED ) != null )
         {
             if ( request.getAttribute( ANONYMOUS_LOGIN ) != null )
@@ -386,16 +329,24 @@ public class NexusHttpAuthenticationFilter
             else
             {
 
-                Subject subject = getSubject( request, response );
-
-                String username = getNexusConfiguration().getAnonymousUsername();
-
-                if ( subject != null && subject.isAuthenticated() )
+                if ( getLogger().isDebugEnabled() )
                 {
-                    username = subject.getPrincipal().toString();
-                }
+                    final Subject subject = getSubject( request, response );
 
-                getLogger().info( "Request processing is rejected because user \"" + username + "\" lacks permissions." );
+                    String username;
+
+                    if ( subject != null && subject.isAuthenticated() && subject.getPrincipal() != null )
+                    {
+                        username = subject.getPrincipal().toString();
+                    }
+                    else
+                    {
+                        username = getNexusConfiguration().getAnonymousUsername();
+                    }
+
+                    getLogger().debug(
+                        "Request processing is rejected because user \"" + username + "\" lacks permissions." );
+                }
 
                 sendForbidden( request, response );
             }
@@ -475,19 +426,22 @@ public class NexusHttpAuthenticationFilter
         return new String[] { parts[0], decoded.substring( parts[0].length() + 1 ) };
     }
 
+    // ==
+
     protected Object getAttribute( String key )
     {
-        return this.getFilterConfig().getServletContext().getAttribute( key );
+        return getFilterConfig().getServletContext().getAttribute( key );
     }
-
 
     private String getUserAgent( final ServletRequest request )
     {
         if ( request instanceof HttpServletRequest )
         {
             final String userAgent = ( (HttpServletRequest) request ).getHeader( "User-Agent" );
+
             return userAgent;
         }
+
         return null;
     }
 }

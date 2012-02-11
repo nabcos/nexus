@@ -1,27 +1,19 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.events;
 
 import org.codehaus.plexus.component.annotations.Component;
 import org.codehaus.plexus.component.annotations.Requirement;
-import org.codehaus.plexus.util.StringUtils;
-import org.sonatype.nexus.ApplicationStatusSource;
 import org.sonatype.nexus.index.IndexerManager;
 import org.sonatype.nexus.proxy.NoSuchRepositoryException;
 import org.sonatype.nexus.proxy.events.AbstractEventInspector;
@@ -33,23 +25,17 @@ import org.sonatype.nexus.proxy.events.RepositoryRegistryRepositoryEvent;
 import org.sonatype.nexus.proxy.maven.MavenRepository;
 import org.sonatype.nexus.proxy.registry.RepositoryRegistry;
 import org.sonatype.nexus.proxy.repository.Repository;
-import org.sonatype.nexus.scheduling.AbstractNexusRepositoriesPathAwareTask;
-import org.sonatype.nexus.scheduling.NexusScheduler;
-import org.sonatype.nexus.tasks.RepairIndexTask;
-import org.sonatype.nexus.tasks.UpdateIndexTask;
 import org.sonatype.plexus.appevents.Event;
 
 /**
- * Listens for events and manages IndexerManager by adding and removing indexing contexts, and doing reindexes when
- * needed (on repository configuration updates).
+ * Listens for events and manages IndexerManager by adding and removing indexing contexts.
  * <p>
- * Split {@link RepositoryRegistryRepositoryEventInspector} into two parts. One is this and the other is
- * {@link RepositoryRegistryRepositoryEventInspector} This part is subject to be moved out of core (luceneindexer
- * plugin)
+ * This EventInspector component HAS TO BE sync!
  * 
  * @author Toni Menzel
+ * @author cstamas
  */
-@Component( role = EventInspector.class, hint = "LuceneIndexingRepositoryRegistryRepositoryEventInspector" )
+@Component( role = EventInspector.class, hint = "IndexingRepositoryRegistryRepositoryEventInspector" )
 public class IndexingRepositoryRegistryRepositoryEventInspector
     extends AbstractEventInspector
 {
@@ -58,12 +44,6 @@ public class IndexingRepositoryRegistryRepositoryEventInspector
 
     @Requirement
     private RepositoryRegistry repoRegistry;
-
-    @Requirement
-    private NexusScheduler nexusScheduler;
-
-    @Requirement
-    private ApplicationStatusSource applicationStatusSource;
 
     protected IndexerManager getIndexerManager()
     {
@@ -78,8 +58,12 @@ public class IndexingRepositoryRegistryRepositoryEventInspector
 
     public void inspect( Event<?> evt )
     {
-        Repository repository = null;
+        if ( !accepts( evt ) )
+        {
+            return;
+        }
 
+        Repository repository = null;
         if ( evt instanceof RepositoryRegistryRepositoryEvent )
         {
             repository = ( (RepositoryRegistryRepositoryEvent) evt ).getRepository();
@@ -88,18 +72,12 @@ public class IndexingRepositoryRegistryRepositoryEventInspector
         {
             repository = ( (RepositoryConfigurationUpdatedEvent) evt ).getRepository();
         }
-        else
-        {
-            // how did I get here at all?
-            return;
-        }
 
         try
         {
-            // check registry for existance, wont be able to do much
+            // check registry for existence, wont be able to do much
             // if doesn't exist yet
             repoRegistry.getRepositoryWithFacet( repository.getId(), MavenRepository.class );
-
             inspectForIndexerManager( evt, repository );
         }
         catch ( NoSuchRepositoryException e )
@@ -116,15 +94,7 @@ public class IndexingRepositoryRegistryRepositoryEventInspector
             if ( evt instanceof RepositoryRegistryEventAdd )
             {
                 getIndexerManager().addRepositoryIndexContext( repository.getId() );
-
                 getIndexerManager().setRepositoryIndexContextSearchable( repository.getId(), repository.isSearchable() );
-
-                // create the initial index
-                if ( applicationStatusSource.getSystemStatus().isNexusStarted() && repository.isIndexable() )
-                {
-                    // Create the initial index for the repository
-                    reindexRepo( repository, false, "Creating initial index, repositoryId=" + repository.getId() );
-                }
             }
             else if ( evt instanceof RepositoryRegistryEventRemove )
             {
@@ -134,54 +104,6 @@ public class IndexingRepositoryRegistryRepositoryEventInspector
             else if ( evt instanceof RepositoryConfigurationUpdatedEvent )
             {
                 getIndexerManager().updateRepositoryIndexContext( repository.getId() );
-
-                if ( evt instanceof RepositoryConfigurationUpdatedEvent )
-                {
-                    RepositoryConfigurationUpdatedEvent event = (RepositoryConfigurationUpdatedEvent) evt;
-
-                    // we need to do a full reindex of a Maven2 Proxy repository if:
-                    // a) if remoteUrl changed
-                    // b) if download remote index enabled (any repo type)
-                    // c) if repository is made searchable
-                    // TODO: are we sure only a) needs a check for Maven2? I think all of them need
-                    if ( event.isRemoteUrlChanged() || event.isDownloadRemoteIndexEnabled() || event.isMadeSearchable() )
-                    {
-                        String taskName = null;
-
-                        String logMessage = null;
-
-                        if ( event.isRemoteUrlChanged() )
-                        {
-                            taskName = append( taskName, "remote URL changed" );
-
-                            logMessage = append( logMessage, "remote URL changed" );
-                        }
-
-                        if ( event.isDownloadRemoteIndexEnabled() )
-                        {
-                            taskName = append( taskName, "enabled download of indexes" );
-
-                            logMessage = append( logMessage, "enabled download of indexes" );
-                        }
-
-                        if ( event.isMadeSearchable() )
-                        {
-                            taskName = append( taskName, "enabled searchable" );
-
-                            logMessage = append( logMessage, "enabled searchable" );
-                        }
-
-                        taskName = taskName + ", repositoryId=" + event.getRepository().getId() + ".";
-
-                        logMessage =
-                            logMessage + " on repository \"" + event.getRepository().getName() + "\" (id="
-                                + event.getRepository().getId() + "), doing full reindex of it.";
-
-                        reindexRepo( event.getRepository(), true, taskName );
-
-                        getLogger().info( logMessage );
-                    }
-                }
             }
         }
         catch ( Exception e )
@@ -189,34 +111,4 @@ public class IndexingRepositoryRegistryRepositoryEventInspector
             getLogger().error( "Could not maintain indexing contexts!", e );
         }
     }
-
-    private void reindexRepo( Repository repository, boolean full, String taskName )
-    {
-        AbstractNexusRepositoriesPathAwareTask<Object> rt;
-        if ( full )
-        {
-            rt = nexusScheduler.createTaskInstance( RepairIndexTask.class );
-        }
-        else
-        {
-            rt = nexusScheduler.createTaskInstance( UpdateIndexTask.class );
-        }
-
-        rt.setRepositoryId( repository.getId() );
-
-        nexusScheduler.submit( taskName, rt );
-    }
-
-    private String append( String message, String append )
-    {
-        if ( StringUtils.isBlank( message ) )
-        {
-            return StringUtils.capitalizeFirstLetter( append );
-        }
-        else
-        {
-            return message + ", " + append;
-        }
-    }
-
 }

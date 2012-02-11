@@ -1,25 +1,20 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.restlight.common;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.StringReader;
 import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -29,9 +24,12 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.StringTokenizer;
 
+import org.apache.commons.httpclient.Credentials;
 import org.apache.commons.httpclient.HttpClient;
 import org.apache.commons.httpclient.HttpException;
+import org.apache.commons.httpclient.HttpMethod;
 import org.apache.commons.httpclient.HttpMethodBase;
+import org.apache.commons.httpclient.NameValuePair;
 import org.apache.commons.httpclient.UsernamePasswordCredentials;
 import org.apache.commons.httpclient.auth.AuthPolicy;
 import org.apache.commons.httpclient.auth.AuthScope;
@@ -41,7 +39,6 @@ import org.apache.commons.httpclient.methods.GetMethod;
 import org.apache.commons.httpclient.methods.PostMethod;
 import org.apache.commons.httpclient.methods.PutMethod;
 import org.apache.commons.httpclient.methods.StringRequestEntity;
-import org.apache.log4j.LogManager;
 import org.codehaus.plexus.util.IOUtil;
 import org.jdom.Document;
 import org.jdom.JDOMException;
@@ -50,6 +47,8 @@ import org.jdom.input.SAXBuilder;
 import org.jdom.output.Format;
 import org.jdom.output.XMLOutputter;
 import org.jdom.xpath.XPath;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.sonatype.aether.util.version.GenericVersionScheme;
 import org.sonatype.aether.version.InvalidVersionSpecificationException;
 import org.sonatype.aether.version.Version;
@@ -123,6 +122,8 @@ public abstract class AbstractRESTLightClient
      * </p>
      */
     protected static final String VOCAB_MANIFEST = "vocabulary.lst";
+    
+    private Logger logger = LoggerFactory.getLogger( getClass() );
 
     private final String baseUrl;
 
@@ -135,13 +136,29 @@ public abstract class AbstractRESTLightClient
     private Properties vocabulary;
 
     private final String vocabBasepath;
+    
+    private final ProxyConfig proxyConfig;
+    
+
+    /**
+     * @see AbstractRESTLightClient#AbstractRESTLightClient(java.lang.String, java.lang.String, java.lang.String, java.lang.String, org.sonatype.nexus.restlight.common.ProxyConfig) 
+     */
+    protected AbstractRESTLightClient( final String baseUrl, final String user, final String password,
+                                       final String vocabBasepath )
+        throws RESTLightClientException
+    {
+        this(baseUrl, user, password, vocabBasepath, null);
+    }
 
     /**
      * Instantiate and connect new REST client. For now, connecting simply means retrieving the Nexus server's
      * apiVersion, so we can load the appropriate vocabulary items.
+     * <p>
+     * ProxyConfig is optional.
+     * 
      */
     protected AbstractRESTLightClient( final String baseUrl, final String user, final String password,
-                                       final String vocabBasepath )
+                                       final String vocabBasepath, final ProxyConfig proxyConfig)
         throws RESTLightClientException
     {
         this.baseUrl = baseUrl;
@@ -161,9 +178,16 @@ public abstract class AbstractRESTLightClient
             this.vocabBasepath = vocabBasepath;
         }
 
+        this.proxyConfig = proxyConfig;
+        
         connect();
     }
 
+    public ProxyConfig getProxyConfig() {
+        return proxyConfig;
+    }
+   
+    
     /**
      * Retrieve the base URL used to connect to Nexus. This URL contains everything <b>up to, but not including</b> the
      * {@link AbstractRESTLightClient#SVC_BASE} base-path.
@@ -199,6 +223,16 @@ public abstract class AbstractRESTLightClient
 
         client.getState().setCredentials( AuthScope.ANY, creds );
 
+        ProxyConfig proxy = getProxyConfig();
+        if(proxy != null){
+            client.getHostConfiguration().setProxy(proxy.getHost(), proxy.getPort());
+            if(proxy.getUsername() != null){
+                Credentials credentials = new UsernamePasswordCredentials(proxy.getUsername(), proxy.getPassword());
+                AuthScope authScope = new AuthScope(proxy.getHost(), proxy.getPort());
+                client.getState().setProxyCredentials(authScope, credentials);
+            }
+        }
+        
         loadVocabulary();
     }
 
@@ -219,7 +253,7 @@ public abstract class AbstractRESTLightClient
 
         if ( stream == null )
         {
-            LogManager.getLogger( getClass() ).debug(
+            logger.debug(
                 "Cannot locate REST vocabulary variants manifest on classpath: " + vocabBasepath + VOCAB_MANIFEST
                     + ". Vocabularies will not be loaded." );
             return;
@@ -303,7 +337,7 @@ public abstract class AbstractRESTLightClient
         }
         else
         {
-            LogManager.getLogger( getClass() ).debug(
+            logger.debug(
                 "Cannot locate REST vocabulary variants in manifest file: " + vocabBasepath + VOCAB_MANIFEST
                     + ". No vocabulary will be loaded." );
         }
@@ -472,16 +506,19 @@ public abstract class AbstractRESTLightClient
 
         if ( status != 200 )
         {
-            throw new RESTLightClientException( "GET request failed; HTTP status: " + status + ": " + statusText );
+            throw validationError( method );
         }
 
+        String body = null;
         try
         {
-            return new SAXBuilder().build( method.getResponseBodyAsStream() );
+            body = method.getResponseBodyAsString();
+            return new SAXBuilder().build( new StringReader( body ) );
         }
         catch ( JDOMException e )
         {
-            throw new RESTLightClientException( "Failed to parse response body as XML for GET request.", e );
+            throw new RESTLightClientException( "Failed to parse response body as XML for GET request. Content: \n"
+                + body + "\nStatus: " + statusText, e );
         }
         catch ( IOException e )
         {
@@ -491,6 +528,21 @@ public abstract class AbstractRESTLightClient
         {
             method.releaseConnection();
         }
+    }
+
+    protected RESTLightClientException validationError( HttpMethod method )
+    {
+        String errorBody = null;
+        try
+        {
+            errorBody = method.getResponseBodyAsString();
+        }
+        catch ( IOException e )
+        {
+            errorBody = "Could not retrieve error body, message lost";
+        }
+
+        return new RESTLightClientException( method.getName() + " request failed; HTTP status: " + method.getStatusCode() + ", " + method.getStatusText() + "\nHTTP body: " + errorBody );
     }
 
     private String formatUrl( final String baseUrl, final String path )
@@ -557,7 +609,7 @@ public abstract class AbstractRESTLightClient
                                final Document body, final boolean expectResponseBody )
         throws RESTLightClientException
     {
-        LogManager.getLogger( getClass().getName() ).debug( "Posting to: '" + path + "'" );
+        logger.debug( "Posting to: '" + path + "'" );
 
         PostMethod method = new PostMethod( formatUrl( baseUrl, path ) );
         method.addRequestHeader( "Content-Type", "application/xml" );
@@ -596,7 +648,7 @@ public abstract class AbstractRESTLightClient
 
         if ( status < 200 || status > 299 )
         {
-            throw new RESTLightClientException( "POST request failed; HTTP status: " + status + ": " + statusText );
+            throw validationError( method );
         }
 
         if ( expectResponseBody )
@@ -652,7 +704,7 @@ public abstract class AbstractRESTLightClient
                               final Document body, final boolean expectResponseBody )
         throws RESTLightClientException
     {
-        LogManager.getLogger( getClass().getName() ).debug( "Putting to: '" + path + "'" );
+        logger.debug( "Putting to: '" + path + "'" );
 
         PutMethod method = new PutMethod( baseUrl + path );
 
@@ -741,6 +793,7 @@ public abstract class AbstractRESTLightClient
             return;
         }
 
+        List<NameValuePair> q = new ArrayList<NameValuePair>();
         for ( Map.Entry<String, ? extends Object> entry : requestParams.entrySet() )
         {
             if ( entry.getValue() instanceof Collection )
@@ -762,7 +815,11 @@ public abstract class AbstractRESTLightClient
             {
                 method.addRequestHeader( entry.getKey(), String.valueOf( entry.getValue() ) );
             }
+
+            q.add( new NameValuePair( entry.getKey(), String.valueOf( entry.getValue() ) ) );
         }
+
+        method.setQueryString( q.toArray( new NameValuePair[0] ) );
     }
 
     /**
@@ -836,7 +893,7 @@ public abstract class AbstractRESTLightClient
 
         if ( status != 200 )
         {
-            throw new RESTLightClientException( "DELETE request failed; HTTP status: " + status + ": " + statusText );
+            throw validationError( method );
         }
 
         if ( expectResponseBody )

@@ -1,20 +1,14 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.rest;
 
@@ -38,6 +32,7 @@ import org.restlet.Context;
 import org.restlet.data.ChallengeRequest;
 import org.restlet.data.ChallengeScheme;
 import org.restlet.data.MediaType;
+import org.restlet.data.Method;
 import org.restlet.data.Parameter;
 import org.restlet.data.Reference;
 import org.restlet.data.Request;
@@ -58,6 +53,7 @@ import org.sonatype.nexus.proxy.ResourceStore;
 import org.sonatype.nexus.proxy.ResourceStoreRequest;
 import org.sonatype.nexus.proxy.StorageException;
 import org.sonatype.nexus.proxy.access.AccessManager;
+import org.sonatype.nexus.proxy.access.Action;
 import org.sonatype.nexus.proxy.attributes.inspectors.DigestCalculatingInspector;
 import org.sonatype.nexus.proxy.item.StorageCollectionItem;
 import org.sonatype.nexus.proxy.item.StorageCompositeItem;
@@ -66,6 +62,7 @@ import org.sonatype.nexus.proxy.item.StorageItem;
 import org.sonatype.nexus.proxy.item.StorageLinkItem;
 import org.sonatype.nexus.proxy.item.uid.IsHiddenAttribute;
 import org.sonatype.nexus.proxy.item.uid.IsRemotelyAccessibleAttribute;
+import org.sonatype.nexus.proxy.repository.Repository;
 import org.sonatype.nexus.proxy.storage.UnsupportedStorageOperationException;
 import org.sonatype.nexus.rest.model.ContentListDescribeRequestResource;
 import org.sonatype.nexus.rest.model.ContentListDescribeResource;
@@ -251,7 +248,7 @@ public abstract class AbstractResourceStoreContentPlexusResource
      * @throws NoSuchRepositoryGroupException
      * @throws NoSuchRepositoryRouterException
      */
-    protected abstract ResourceStore getResourceStore( Request request )
+    protected abstract ResourceStore getResourceStore( final Request request )
         throws NoSuchResourceStoreException, ResourceException;
 
     /**
@@ -373,18 +370,17 @@ public abstract class AbstractResourceStoreContentPlexusResource
                 }
                 else
                 {
-                    res.setStatus( Status.REDIRECTION_NOT_MODIFIED, "The resource is not modified!" );
-
-                    return null;
+                    throw new ResourceException( Status.REDIRECTION_NOT_MODIFIED, "Resource is not modified." );
                 }
             }
             else if ( req.getConditions().getNoneMatch() != null && req.getConditions().getNoneMatch().size() > 0
-                && file.getAttributes().containsKey( DigestCalculatingInspector.DIGEST_SHA1_KEY ) )
+                && file.getRepositoryItemAttributes().containsKey( DigestCalculatingInspector.DIGEST_SHA1_KEY ) )
             {
                 Tag tag = req.getConditions().getNoneMatch().get( 0 );
 
                 // this is a conditional get using ETag
-                if ( !file.getAttributes().get( DigestCalculatingInspector.DIGEST_SHA1_KEY ).equals( tag.getName() ) )
+                if ( !file.getRepositoryItemAttributes().get( DigestCalculatingInspector.DIGEST_SHA1_KEY ).equals(
+                    tag.getName() ) )
                 {
                     result = new StorageFileItemRepresentation( file );
                 }
@@ -427,6 +423,11 @@ public abstract class AbstractResourceStoreContentPlexusResource
 
             // we have a collection
             StorageCollectionItem coll = (StorageCollectionItem) item;
+
+            if ( Method.HEAD.equals( req.getMethod() ) )
+            {
+                return renderHeadResponseItem( context, req, res, variant, store, item.getResourceStoreRequest(), coll );
+            }
 
             Collection<StorageItem> children = coll.list();
 
@@ -550,6 +551,16 @@ public abstract class AbstractResourceStoreContentPlexusResource
         }
 
         return null;
+    }
+
+    protected Object renderHeadResponseItem( Context context, Request req, Response res, Variant variant,
+                                             ResourceStore store, ResourceStoreRequest request,
+                                             StorageCollectionItem coll )
+        throws IOException, AccessDeniedException, NoSuchResourceStoreException, IllegalOperationException,
+        ItemNotFoundException, StorageException, ResourceException
+    {
+        // we are just returning anything, the connector will strip off content anyway.
+        return new StorageItemRepresentation( variant.getMediaType(), coll );
     }
 
     protected Object renderDescribeItem( Context context, Request req, Response res, Variant variant,
@@ -698,7 +709,7 @@ public abstract class AbstractResourceStoreContentPlexusResource
         result.addProperty( "virtual=" + item.isVirtual() );
 
         // attributes
-        for ( Map.Entry<String, String> entry : item.getAttributes().entrySet() )
+        for ( Map.Entry<String, String> entry : item.getRepositoryItemAttributes().asMap().entrySet() )
         {
             result.addAttribute( entry.toString() );
         }
@@ -766,7 +777,7 @@ public abstract class AbstractResourceStoreContentPlexusResource
      * 
      * @param t
      */
-    protected void handleException( Request req, Response res, Exception t )
+    protected void handleException( final Request req, final Response res, final Exception t )
         throws ResourceException
     {
         // just set this flag to true in any if-else branch you want to see
@@ -835,45 +846,72 @@ public abstract class AbstractResourceStoreContentPlexusResource
         }
         finally
         {
-            String message =
-                "Got exception during processing request \"" + req.getMethod() + " " + req.getResourceRef().toString()
-                    + "\": ";
-
-            if ( getLogger().isDebugEnabled() )
+            if ( t instanceof ResourceException )
             {
-                // if DEBUG level, we log _all_ errors with stack traces, except the ItemNotFoundException
+                ResourceException re = (ResourceException) t;
 
-                if ( t instanceof ItemNotFoundException )
+                // See NEXUS-4380
+                // do not spam the log with non-error responses, we need only errors to have logged in case when
+                // exception to be handled is ResourceException
+                if ( re.getStatus() == null || re.getStatus().isError() )
                 {
-                    // we are "muting" item not found exception stack traces, it pollutes the DEBUG logs
-                    getLogger().error( message + t.getMessage() );
-                }
-                else
-                {
-                    // in debug mode, we log _with_ stack trace
-                    getLogger().error( message, t );
+                    handleErrorConstructLogMessage( req, res, t, shouldLogInfoStackTrace );
                 }
             }
             else
             {
-                // if not in DEBUG mode, we obey the flag to decide whether we need to log or not the stack trace
-                if ( ( t instanceof ItemNotFoundException || t instanceof IllegalRequestException )
-                    && !shouldLogInfoStackTrace )
+                handleErrorConstructLogMessage( req, res, t, shouldLogInfoStackTrace );
+            }
+        }
+    }
+
+    protected void handleErrorConstructLogMessage( final Request req, final Response res, final Exception t,
+                                                   final boolean shouldLogInfoStackTrace )
+    {
+        String message =
+            "Got exception during processing request \"" + req.getMethod() + " " + req.getResourceRef().toString()
+                + "\": ";
+
+        // NEXUS-4417: logging of 'repository not found' should be debug level
+        // NEXUS-4788 log remote 'Forbidden' response only on debug
+        if ( t instanceof NoSuchRepositoryException || t instanceof AccessDeniedException )
+        {
+            getLogger().debug( message, t );
+        }
+        else if ( getLogger().isDebugEnabled() )
+        {
+            // if DEBUG level, we log _all_ errors with stack traces, except the ItemNotFoundException
+
+            if ( t instanceof ItemNotFoundException )
+            {
+                // we are "muting" item not found exception stack traces, it pollutes the DEBUG logs
+                getLogger().error( message + t.getMessage() );
+            }
+            else
+            {
+                // in debug mode, we log _with_ stack trace
+                getLogger().error( message, t );
+            }
+        }
+        else
+        {
+            // if not in DEBUG mode, we obey the flag to decide whether we need to log or not the stack trace
+            if ( ( t instanceof ItemNotFoundException || t instanceof IllegalRequestException )
+                && !shouldLogInfoStackTrace )
+            {
+                // mute it
+            }
+            else
+            {
+                if ( shouldLogInfoStackTrace )
                 {
-                    // mute it
+                    // in INFO mode, we obey the shouldLogInfoStackTrace flag for serious errors (like internal is)
+                    getLogger().error( message, t );
                 }
                 else
                 {
-                    if ( shouldLogInfoStackTrace )
-                    {
-                        // in INFO mode, we obey the shouldLogInfoStackTrace flag for serious errors (like internal is)
-                        getLogger().error( message, t );
-                    }
-                    else
-                    {
-                        // in INFO mode, we want one liners usually
-                        getLogger().error( message + t.getMessage() );
-                    }
+                    // in INFO mode, we want one liners usually
+                    getLogger().error( message + t.getMessage() );
                 }
             }
         }
@@ -887,7 +925,7 @@ public abstract class AbstractResourceStoreContentPlexusResource
      * @param res
      * @param t
      */
-    public static void challengeIfNeeded( Request req, Response res, AccessDeniedException t )
+    public static void challengeIfNeeded( final Request req, final Response res, final AccessDeniedException t )
     {
         // TODO: a big fat problem here!
         // this makes restlet code tied to Servlet code, and we what is happening here is VERY dirty!

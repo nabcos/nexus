@@ -1,20 +1,14 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.integrationtests.nexus636;
 
@@ -28,6 +22,9 @@ import java.util.Date;
 
 import org.apache.commons.io.FileUtils;
 import org.sonatype.nexus.integrationtests.AbstractNexusIntegrationTest;
+import org.sonatype.nexus.proxy.attributes.Attributes;
+import org.sonatype.nexus.proxy.attributes.Marshaller;
+import org.sonatype.nexus.proxy.attributes.JacksonJSONMarshaller;
 import org.sonatype.nexus.proxy.item.DefaultStorageCollectionItem;
 import org.sonatype.nexus.proxy.item.DefaultStorageFileItem;
 import org.sonatype.nexus.proxy.item.DefaultStorageLinkItem;
@@ -63,8 +60,7 @@ public class Nexus636EvictUnusedProxiedTaskIT
     {
 
         repositoryPath = new File( nexusWorkDir, "storage/" + REPO_RELEASE_PROXY_REPO1 );
-        // attributesPath = new File( nexusWorkDir, "storage/" + REPO_RELEASE_PROXY_REPO1 + "/.nexus/attributes" );
-        attributesPath = new File( nexusWorkDir, "proxy/attributes/" + REPO_RELEASE_PROXY_REPO1 );
+        attributesPath = new File( nexusWorkDir, "storage/" + REPO_RELEASE_PROXY_REPO1 + "/.nexus/attributes" );
 
         File repo = getTestFile( "repo" );
 
@@ -76,7 +72,7 @@ public class Nexus636EvictUnusedProxiedTaskIT
         // rebuild attributes
         ScheduledServicePropertyResource prop = new ScheduledServicePropertyResource();
         prop.setKey( "repositoryId" );
-        prop.setValue(  this.getTestRepositoryId() );
+        prop.setValue( this.getTestRepositoryId() );
         TaskScheduleUtil.runTask( RebuildAttributesTaskDescriptor.ID, prop );
 
     }
@@ -160,38 +156,45 @@ public class Nexus636EvictUnusedProxiedTaskIT
         TaskScheduleUtil.runTask( taskName, EvictUnusedItemsTaskDescriptor.ID, repo, age );
     }
 
-    private XStream getXStream()
+    private Marshaller getMarshaller()
     {
-        XStream xstream = new XStream();
-        xstream.alias( "file", DefaultStorageFileItem.class );
-        xstream.alias( "collection", DefaultStorageCollectionItem.class );
-        xstream.alias( "link", DefaultStorageLinkItem.class );
-
-        return xstream;
+        return new JacksonJSONMarshaller();
     }
 
     private void changeProxyAttributeDate( File attributeFile, int daysFromToday )
         throws IOException
     {
         // load file
+        Attributes attributes;
         FileInputStream fis = new FileInputStream( attributeFile );
-        // Object obj = this.getXStream().fromXML( fis );
-        DefaultStorageFileItem fileItem = (DefaultStorageFileItem) this.getXStream().fromXML( fis );
-        fis.close();
+        try
+        {
+            attributes = getMarshaller().unmarshal( fis );
+        }
+        finally
+        {
+            fis.close();
+        }
 
         Calendar cal = Calendar.getInstance();
         cal.setTime( new Date() );
         cal.add( Calendar.DATE, daysFromToday );
 
         // edit object
-        fileItem.incrementGeneration();
-        fileItem.setLastRequested( cal.getTime().getTime() );
-        fileItem.setRemoteChecked( cal.getTime().getTime() );
+        attributes.incrementGeneration();
+        attributes.setLastRequested( cal.getTime().getTime() );
+        attributes.setCheckedRemotely( cal.getTime().getTime() );
 
         // save file
         FileOutputStream fos = new FileOutputStream( attributeFile );
-        this.getXStream().toXML( fileItem, fos );
-        fos.close();
+        try
+        {
+            getMarshaller().marshal( attributes, fos );
+        }
+        finally
+        {
+            fos.close();
+        }
     }
 
 }

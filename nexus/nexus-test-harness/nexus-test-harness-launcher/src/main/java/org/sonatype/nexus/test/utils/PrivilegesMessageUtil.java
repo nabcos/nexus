@@ -1,20 +1,14 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.test.utils;
 
@@ -23,12 +17,13 @@ import java.io.IOException;
 import java.util.Iterator;
 import java.util.List;
 
-import org.apache.log4j.Logger;
 import org.codehaus.plexus.util.StringUtils;
 import org.restlet.data.MediaType;
 import org.restlet.data.Method;
 import org.restlet.data.Response;
 import org.restlet.data.Status;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.sonatype.nexus.integrationtests.AbstractNexusIntegrationTest;
 import org.sonatype.nexus.integrationtests.RequestFacade;
 import org.sonatype.nexus.rest.model.PrivilegeResource;
@@ -40,6 +35,9 @@ import org.sonatype.security.rest.model.PrivilegeListResourceResponse;
 import org.sonatype.security.rest.model.PrivilegeStatusResource;
 import org.sonatype.security.rest.model.PrivilegeStatusResourceResponse;
 import org.testng.Assert;
+import static org.hamcrest.MatcherAssert.*;
+import static org.hamcrest.Matchers.*;
+import static org.sonatype.nexus.test.utils.NexusRequestMatchers.*;
 
 import com.thoughtworks.xstream.XStream;
 
@@ -50,7 +48,7 @@ public class PrivilegesMessageUtil
 
     private MediaType mediaType;
 
-    private Logger log = Logger.getLogger( getClass() );
+    private Logger log = LoggerFactory.getLogger( getClass() );
 
     public PrivilegesMessageUtil( AbstractNexusIntegrationTest test, XStream xstream, MediaType mediaType )
     {
@@ -62,15 +60,16 @@ public class PrivilegesMessageUtil
     public List<PrivilegeStatusResource> createPrivileges( PrivilegeResource resource )
         throws IOException
     {
-        Response response = this.sendMessage( Method.POST, resource );
-
-        if ( !response.getStatus().isSuccess() )
-        {
-            Assert.fail( "Could not create privilege: " + response.getStatus() );
+        Response response = null;
+        List<PrivilegeStatusResource> statusResources;
+        try {
+            response = this.sendMessage( Method.POST, resource );
+            statusResources = this.getResourceListFromResponse( response );
+            assertThat(response, isSuccessful());
+        } finally {
+            RequestFacade.releaseResponse(response);
         }
 
-        // get the Resource object
-        List<PrivilegeStatusResource> statusResources = this.getResourceListFromResponse( response );
         getTest().getSecurityConfigUtil().verifyPrivileges( statusResources );
 
         return statusResources;

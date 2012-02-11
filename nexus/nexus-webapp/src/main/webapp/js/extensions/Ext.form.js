@@ -1,20 +1,14 @@
 /*
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 /*
  * Ext.form.js Sonatype specific Ext Form overrides and extensions
@@ -82,6 +76,11 @@ Ext.override(Ext.form.Field, {
         {
           wrapDiv = this.getEl().up('div.x-form-check-wrap');
           helpClass = 'form-label-helpmark-check';
+        }
+        else if (this.getXType() == 'textarea')
+        {
+          wrapDiv = this.getEl().up('div.x-form-element');
+          helpClass = 'form-label-helpmark-textarea';
         }
         else
         {
@@ -971,3 +970,67 @@ Ext.form.ByteDisplayField = Ext.extend(Ext.form.DisplayField, {
     });
 
 Ext.reg('byteDisplayField', Ext.form.ByteDisplayField);
+
+Ext.override(Ext.form.TextField, {
+  /**
+   * @cfg {Boolean} htmlDecode
+   * <tt>true</tt> to decode html entities in the value given to
+   * Ext.form.ByteDisplayField.setValue and Ext.form.ByteDisplayField.setRawValue
+   * before setting the actual value.
+   * <p/>
+   * This is needed for displaying the 'literal' value in the text field when it was received by the server,
+   * for example in the repository name. The REST layer will encode to html entities, which will be correct
+   * for html rendering, but text fields without this configuration will display '&quot;test&quot;' instead
+   * of the originally sent '"test"'.
+   */
+  htmlDecode : false,
+
+  /**
+   * @cfg {Boolean} htmlConvert
+   * <tt>true</tt> to decode html entities in the value given to
+   * Ext.form.TextField.set(Raw)Value
+   * before setting the actual value, and encode html entities again
+   * in the call to Ext.form.TextField.get(Raw)Value.
+   * <p/>
+   * This is needed for displaying the 'literal' value in the text field when it was received by the server
+   * (see htmlDecode configuration doc), and display to the user correctly before round-tripping to the server again
+   * (e.g. in a grid field).
+   * <p/>
+   * when this config is set, the value has to be html-decoded again before sending it to the server, because the REST layer
+   * will encode the string again.
+   */
+  htmlConvert : false,
+
+  setRawValue : function(value) {
+    if ( this.htmlDecode || this.htmlConvert )
+    {
+      value = Ext.util.Format.htmlDecode(value);
+    }
+    Ext.form.TextField.superclass.setRawValue.call(this, value);
+  },
+  setValue : function(value) {
+    if ( this.htmlDecode || this.htmlConvert )
+    {
+      value = Ext.util.Format.htmlDecode(value);
+    }
+    Ext.form.TextField.superclass.setValue.call(this, value);
+  },
+  getRawValue : function() {
+    var value = Ext.form.TextField.superclass.getRawValue.call(this);
+    if ( this.htmlConvert )
+    {
+      value = Ext.util.Format.htmlEncode(value);
+    }
+    return value;
+  },
+  getValue : function() {
+    var value = Ext.form.TextField.superclass.getValue.call(this);
+    if ( this.htmlConvert )
+    {
+      value = Ext.util.Format.htmlEncode(value);
+    }
+    return value;
+  }
+});
+
+

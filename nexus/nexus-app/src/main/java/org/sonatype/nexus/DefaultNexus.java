@@ -1,36 +1,26 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus;
 
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Date;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
-import org.apache.maven.index.artifact.ArtifactPackagingMapper;
+import org.apache.commons.httpclient.CustomMultiThreadedHttpConnectionManager;
 import org.codehaus.plexus.component.annotations.Component;
 import org.codehaus.plexus.component.annotations.Requirement;
 import org.codehaus.plexus.personality.plexus.lifecycle.phase.Initializable;
@@ -42,16 +32,8 @@ import org.sonatype.configuration.ConfigurationException;
 import org.sonatype.nexus.configuration.ConfigurationChangeEvent;
 import org.sonatype.nexus.configuration.application.NexusConfiguration;
 import org.sonatype.nexus.events.EventInspectorHost;
-import org.sonatype.nexus.feeds.AuthcAuthzEvent;
-import org.sonatype.nexus.feeds.ErrorWarningEvent;
-import org.sonatype.nexus.feeds.FeedRecorder;
-import org.sonatype.nexus.feeds.NexusArtifactEvent;
-import org.sonatype.nexus.feeds.SystemEvent;
-import org.sonatype.nexus.feeds.SystemProcess;
 import org.sonatype.nexus.index.events.ReindexRepositoriesEvent;
 import org.sonatype.nexus.index.events.ReindexRepositoriesRequest;
-import org.sonatype.nexus.log.LogConfig;
-import org.sonatype.nexus.log.LogManager;
 import org.sonatype.nexus.logging.AbstractLoggingComponent;
 import org.sonatype.nexus.maven.tasks.SnapshotRemovalRequest;
 import org.sonatype.nexus.maven.tasks.SnapshotRemovalResult;
@@ -65,11 +47,14 @@ import org.sonatype.nexus.proxy.NoSuchRepositoryException;
 import org.sonatype.nexus.proxy.NoSuchResourceStoreException;
 import org.sonatype.nexus.proxy.ResourceStoreRequest;
 import org.sonatype.nexus.proxy.StorageException;
+import org.sonatype.nexus.proxy.events.NexusInitializedEvent;
 import org.sonatype.nexus.proxy.events.NexusStartedEvent;
 import org.sonatype.nexus.proxy.events.NexusStoppedEvent;
+import org.sonatype.nexus.proxy.events.NexusStoppingEvent;
 import org.sonatype.nexus.proxy.item.StorageItem;
 import org.sonatype.nexus.proxy.item.StorageLinkItem;
 import org.sonatype.nexus.proxy.maven.MavenRepository;
+import org.sonatype.nexus.proxy.maven.packaging.ArtifactPackagingMapper;
 import org.sonatype.nexus.proxy.registry.RepositoryRegistry;
 import org.sonatype.nexus.proxy.repository.LocalStatus;
 import org.sonatype.nexus.proxy.repository.Repository;
@@ -81,11 +66,9 @@ import org.sonatype.nexus.templates.NoSuchTemplateIdException;
 import org.sonatype.nexus.templates.TemplateManager;
 import org.sonatype.nexus.templates.TemplateSet;
 import org.sonatype.nexus.templates.repository.RepositoryTemplate;
-import org.sonatype.nexus.timeline.RepositoryIdTimelineFilter;
 import org.sonatype.plexus.appevents.ApplicationEventMulticaster;
 import org.sonatype.plexus.components.ehcache.PlexusEhCacheWrapper;
 import org.sonatype.security.SecuritySystem;
-import org.sonatype.timeline.TimelineFilter;
 
 /**
  * The default Nexus implementation.
@@ -123,12 +106,6 @@ public class DefaultNexus
     private NexusScheduler nexusScheduler;
 
     /**
-     * The Feed recorder.
-     */
-    @Requirement
-    private FeedRecorder feedRecorder;
-
-    /**
      * The snapshot remover component.
      */
     @Requirement
@@ -139,12 +116,6 @@ public class DefaultNexus
      */
     @Requirement
     private RepositoryRouter rootRepositoryRouter;
-
-    /**
-     * The LogFile Manager
-     */
-    @Requirement
-    private LogManager logManager;
 
     /**
      * Template manager.
@@ -301,82 +272,6 @@ public class DefaultNexus
         return response;
     }
 
-    public Collection<NexusStreamResponse> getApplicationLogFiles()
-        throws IOException
-    {
-        getLogger().debug( "List log files." );
-
-        Set<File> files = logManager.getLogFiles();
-
-        ArrayList<NexusStreamResponse> result = new ArrayList<NexusStreamResponse>( files.size() );
-
-        for ( File file : files )
-        {
-            NexusStreamResponse response = new NexusStreamResponse();
-
-            response.setName( file.getName() );
-
-            // TODO:
-            response.setMimeType( "text/plain" );
-
-            response.setSize( file.length() );
-
-            response.setInputStream( null );
-
-            result.add( response );
-        }
-
-        return result;
-    }
-
-    /**
-     * Retrieves a stream to the requested log file. This method ensures that the file is rooted in the log folder to
-     * prevent browsing of the file system.
-     * 
-     * @param logFile path of the file to retrieve
-     * @returns InputStream to the file or null if the file is not allowed or doesn't exist.
-     */
-    public NexusStreamResponse getApplicationLogAsStream( String logFile, long from, long count )
-        throws IOException
-    {
-        if ( getLogger().isDebugEnabled() )
-        {
-            getLogger().debug( "Retrieving " + logFile + " log file." );
-        }
-
-        if ( logFile.contains( File.pathSeparator ) )
-        {
-            getLogger().warn( "Nexus refuses to retrive log files with path separators in its name." );
-
-            return null;
-        }
-
-        File log = logManager.getLogFile( logFile );
-
-        if ( log == null || !log.exists() )
-        {
-            getLogger().warn( "Log file does not exist: [" + logFile + "]" );
-
-            return null;
-        }
-
-        NexusStreamResponse response = new NexusStreamResponse();
-
-        response.setName( logFile );
-
-        response.setMimeType( "text/plain" );
-
-        response.setSize( log.length() );
-
-        response.setFromByte( from );
-
-        response.setBytesCount( count );
-
-        response.setInputStream( new LimitedInputStream( new FileInputStream( log ), from, count ) );
-
-        return response;
-    }
-
     @Deprecated
     public void expireAllCaches( ResourceStoreRequest request )
     {
@@ -462,148 +357,6 @@ public class DefaultNexus
         return nexusConfiguration.getConfigurationAsStreamByKey( key );
     }
 
-    public LogConfig getLogConfig()
-        throws IOException
-    {
-        return logManager.getLogConfig();
-    }
-
-    public void setLogConfig( LogConfig config )
-        throws IOException
-    {
-        logManager.setLogConfig( config );
-    }
-
-    // ----------------------------------------------------------------------------
-    // Repo templates, CRUD
-    // ----------------------------------------------------------------------------
-    // ----------------------------------------------------------------------------
-    // Feeds
-    // ----------------------------------------------------------------------------
-
-    // creating
-
-    @Deprecated
-    public void addNexusArtifactEvent( NexusArtifactEvent nae )
-    {
-        feedRecorder.addNexusArtifactEvent( nae );
-    }
-
-    @Deprecated
-    public void addSystemEvent( String action, String message )
-    {
-        feedRecorder.addSystemEvent( action, message );
-    }
-
-    @Deprecated
-    public void addAuthcAuthzEvent( AuthcAuthzEvent evt )
-    {
-        feedRecorder.addAuthcAuthzEvent( evt );
-    }
-
-    @Deprecated
-    public SystemProcess systemProcessStarted( String action, String message )
-    {
-        return feedRecorder.systemProcessStarted( action, message );
-    }
-
-    @Deprecated
-    public void systemProcessFinished( SystemProcess prc, String finishMessage )
-    {
-        feedRecorder.systemProcessFinished( prc, finishMessage );
-    }
-
-    @Deprecated
-    public void systemProcessBroken( SystemProcess prc, Throwable e )
-    {
-        feedRecorder.systemProcessBroken( prc, e );
-    }
-
-    // reading
-
-    public List<NexusArtifactEvent> getRecentlyStorageChanges( Integer from, Integer count, Set<String> repositoryIds )
-    {
-        TimelineFilter filter =
-            ( repositoryIds == null || repositoryIds.isEmpty() ) ? null
-                            : new RepositoryIdTimelineFilter( repositoryIds );
-
-        return feedRecorder.getNexusArtifectEvents( new HashSet<String>( Arrays.asList( new String[] {
-                                                        NexusArtifactEvent.ACTION_CACHED,
-                                                        NexusArtifactEvent.ACTION_DEPLOYED,
-                                                        NexusArtifactEvent.ACTION_DELETED } ) ), from, count, filter );
-    }
-
-    public List<NexusArtifactEvent> getRecentlyDeployedOrCachedArtifacts( Integer from, Integer count,
-                                                                          Set<String> repositoryIds )
-    {
-        TimelineFilter filter =
-            ( repositoryIds == null || repositoryIds.isEmpty() ) ? null
-                            : new RepositoryIdTimelineFilter( repositoryIds );
-
-        return feedRecorder.getNexusArtifectEvents( new HashSet<String>( Arrays.asList( new String[] {
-                                                        NexusArtifactEvent.ACTION_CACHED,
-                                                        NexusArtifactEvent.ACTION_DEPLOYED } ) ), from, count, filter );
-    }
-
-    public List<NexusArtifactEvent> getRecentlyCachedArtifacts( Integer from, Integer count, Set<String> repositoryIds )
-    {
-        TimelineFilter filter =
-            ( repositoryIds == null || repositoryIds.isEmpty() ) ? null
-                            : new RepositoryIdTimelineFilter( repositoryIds );
-
-        return feedRecorder.getNexusArtifectEvents( new HashSet<String>(
-                                                                         Arrays.asList( new String[] { NexusArtifactEvent.ACTION_CACHED } ) ),
-                                                    from, count, filter );
-    }
-
-    public List<NexusArtifactEvent> getRecentlyDeployedArtifacts( Integer from, Integer count, Set<String> repositoryIds )
-    {
-        TimelineFilter filter =
-            ( repositoryIds == null || repositoryIds.isEmpty() ) ? null
-                            : new RepositoryIdTimelineFilter( repositoryIds );
-
-        return feedRecorder.getNexusArtifectEvents( new HashSet<String>(
-                                                                         Arrays.asList( new String[] { NexusArtifactEvent.ACTION_DEPLOYED } ) ),
-                                                    from, count, filter );
-    }
-
-    public List<NexusArtifactEvent> getBrokenArtifacts( Integer from, Integer count, Set<String> repositoryIds )
-    {
-        TimelineFilter filter =
-            ( repositoryIds == null || repositoryIds.isEmpty() ) ? null
-                            : new RepositoryIdTimelineFilter( repositoryIds );
-
-        return feedRecorder.getNexusArtifectEvents( new HashSet<String>( Arrays.asList( new String[] {
-                                                        NexusArtifactEvent.ACTION_BROKEN,
-                                                        NexusArtifactEvent.ACTION_BROKEN_WRONG_REMOTE_CHECKSUM,
-                                                        NexusArtifactEvent.ACTION_BROKEN_INVALID_CONTENT } ) ),
-                                                    from, count, filter );
-    }
-
-    public List<SystemEvent> getRepositoryStatusChanges( Integer from, Integer count )
-    {
-        return feedRecorder.getSystemEvents( new HashSet<String>( Arrays.asList( new String[] {
-                                                 FeedRecorder.SYSTEM_REPO_LSTATUS_CHANGES_ACTION,
-                                                 FeedRecorder.SYSTEM_REPO_PSTATUS_CHANGES_ACTION,
-                                                 FeedRecorder.SYSTEM_REPO_PSTATUS_AUTO_CHANGES_ACTION } ) ), from,
-                                             count, null );
-    }
-
-    public List<SystemEvent> getSystemEvents( Integer from, Integer count )
-    {
-        return feedRecorder.getSystemEvents( null, from, count, null );
-    }
-
-    public List<AuthcAuthzEvent> getAuthcAuthzEvents( Integer from, Integer count )
-    {
-        return feedRecorder.getAuthcAuthzEvents( null, from, count, null );
-    }
-
-    public List<ErrorWarningEvent> getErrorWarningEvents( Integer from, Integer count )
-    {
-        return feedRecorder.getErrorWarningEvents( null, from, count, null );
-    }
-
     // ===========================
     // Nexus Application lifecycle
 
@@ -649,6 +402,8 @@ public class DefaultNexus
         applicationStatusSource.getSystemStatus().setOperationMode( OperationMode.STANDALONE );
 
         applicationStatusSource.getSystemStatus().setInitializedAt( new Date() );
+
+        applicationEventMulticaster.notifyEventListeners( new NexusInitializedEvent( this ) );
     }
 
     public void start()
@@ -702,9 +457,6 @@ public class DefaultNexus
             // notify about start
             applicationEventMulticaster.notifyEventListeners( new ConfigurationChangeEvent( nexusConfiguration, null,
                                                                                             null ) );
-
-            addSystemEvent( FeedRecorder.SYSTEM_BOOT_ACTION, "Starting Nexus (version "
-                + getSystemStatus().getVersion() + " " + getSystemStatus().getEditionShort() + ")" );
 
             applicationStatusSource.getSystemStatus().setLastConfigChange( new Date() );
 
@@ -770,8 +522,10 @@ public class DefaultNexus
     {
         applicationStatusSource.getSystemStatus().setState( SystemState.STOPPING );
 
-        addSystemEvent( FeedRecorder.SYSTEM_BOOT_ACTION, "Stopping Nexus (version " + getSystemStatus().getVersion()
-            + " " + getSystemStatus().getEditionShort() + ")" );
+        // Due to no dependency mechanism in NX for components, we need to fire off a hint about shutdown first
+        applicationEventMulticaster.notifyEventListeners( new NexusStoppingEvent( this ) );
+        
+        nexusScheduler.shutdown();
 
         applicationEventMulticaster.notifyEventListeners( new NexusStoppedEvent( this ) );
 
@@ -782,6 +536,9 @@ public class DefaultNexus
         cacheWrapper.stop();
 
         applicationStatusSource.getSystemStatus().setState( SystemState.STOPPED );
+        
+        // Now a cleanup, to kill dangling thread of HttpClients
+        CustomMultiThreadedHttpConnectionManager.shutdownAll();
 
         getLogger().info( "Stopped Nexus (version " + getSystemStatus().getVersion() + " "
                               + getSystemStatus().getEditionShort() + ")" );

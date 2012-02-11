@@ -1,36 +1,30 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.security.ldap.realms.testharness;
 
 import java.io.IOException;
 
-import org.apache.log4j.Logger;
 import org.restlet.data.MediaType;
 import org.restlet.data.Method;
 import org.restlet.data.Response;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.sonatype.nexus.integrationtests.RequestFacade;
 import org.sonatype.nexus.security.ldap.realms.api.LdapRealmPlexusResourceConst;
 import org.sonatype.nexus.security.ldap.realms.api.dto.LdapConnectionInfoDTO;
 import org.sonatype.nexus.security.ldap.realms.api.dto.LdapConnectionInfoResponse;
 import org.sonatype.nexus.test.utils.GroupMessageUtil;
 import org.sonatype.plexus.rest.representation.XStreamRepresentation;
-
 import org.sonatype.security.ldap.realms.persist.model.CConnectionInfo;
 import org.testng.Assert;
 
@@ -45,7 +39,7 @@ public class LdapConnMessageUtil
 
     private MediaType mediaType;
 
-    private static final Logger LOG = Logger.getLogger( GroupMessageUtil.class );
+    private static final Logger LOG = LoggerFactory.getLogger( GroupMessageUtil.class );
 
     public LdapConnMessageUtil( XStream xstream, MediaType mediaType )
     {
@@ -64,18 +58,26 @@ public class LdapConnMessageUtil
     public LdapConnectionInfoDTO updateConnectionInfo( LdapConnectionInfoDTO connInfo )
         throws Exception
     {
-        Response response = this.sendMessage( Method.PUT, connInfo );
-
-        if ( !response.getStatus().isSuccess() )
+        Response response = null;
+        try
         {
-            String responseText = response.getEntity().getText();
-            Assert.fail( "Could not create Repository: " + response.getStatus() + ":\n" + responseText );
+            response = this.sendMessage( Method.PUT, connInfo );
+
+            if ( !response.getStatus().isSuccess() )
+            {
+                String responseText = response.getEntity().getText();
+                Assert.fail( "Could not update LDAP connection info: " + response.getStatus() + ":\n" + responseText );
+            }
+            LdapConnectionInfoDTO responseResource = this.getResourceFromResponse( response );
+            this.validateResourceResponse( connInfo, responseResource );
+
+            return responseResource;
         }
-        LdapConnectionInfoDTO responseResource = this.getResourceFromResponse( response );
+        finally
+        {
+            RequestFacade.releaseResponse( response );
+        }
 
-        this.validateResourceResponse( connInfo, responseResource );
-
-        return responseResource;
     }
 
     public Response sendMessage( Method method, LdapConnectionInfoDTO resource )
@@ -123,8 +125,8 @@ public class LdapConnMessageUtil
         LOG.debug( " getResourceFromResponse: " + responseString );
 
         XStreamRepresentation representation = new XStreamRepresentation( xstream, responseString, mediaType );
-        LdapConnectionInfoResponse resourceResponse = (LdapConnectionInfoResponse) representation
-            .getPayload( new LdapConnectionInfoResponse() );
+        LdapConnectionInfoResponse resourceResponse =
+            (LdapConnectionInfoResponse) representation.getPayload( new LdapConnectionInfoResponse() );
 
         return resourceResponse.getData();
     }

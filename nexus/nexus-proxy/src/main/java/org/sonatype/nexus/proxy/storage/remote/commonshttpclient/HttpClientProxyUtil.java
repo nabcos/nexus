@@ -1,20 +1,14 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.proxy.storage.remote.commonshttpclient;
 
@@ -22,7 +16,6 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.logging.Level;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 
@@ -34,7 +27,8 @@ import org.apache.commons.httpclient.NTCredentials;
 import org.apache.commons.httpclient.UsernamePasswordCredentials;
 import org.apache.commons.httpclient.auth.AuthPolicy;
 import org.apache.commons.httpclient.auth.AuthScope;
-import org.codehaus.plexus.logging.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.sonatype.nexus.proxy.repository.ClientSSLRemoteAuthenticationSettings;
 import org.sonatype.nexus.proxy.repository.NtlmRemoteAuthenticationSettings;
 import org.sonatype.nexus.proxy.repository.RemoteAuthenticationSettings;
@@ -45,11 +39,12 @@ import org.sonatype.nexus.util.SystemPropertiesHelper;
 
 public class HttpClientProxyUtil
 {
+
     public static final String CONNECTION_POOL_SIZE_KEY = "httpClient.connectionPoolSize";
 
     public static final String NTLM_IS_IN_USE_KEY = "httpClient.ntlmIsInUse";
 
-    private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger( HttpClientProxyUtil.class );
+    private static final Logger LOGGER = LoggerFactory.getLogger( HttpClientProxyUtil.class );
 
     public static void applyProxyToHttpClient( HttpClient httpClient, RemoteStorageContext ctx, Logger logger )
     {
@@ -67,7 +62,7 @@ public class HttpClientProxyUtil
 
         httpClient.getHttpConnectionManager().getParams().setConnectionTimeout( timeout );
         httpClient.getHttpConnectionManager().getParams().setSoTimeout( timeout );
-        httpClient.getHttpConnectionManager().getParams().setTcpNoDelay( true );
+        // httpClient.getHttpConnectionManager().getParams().setTcpNoDelay( true );
         httpClient.getHttpConnectionManager().getParams().setMaxTotalConnections( connectionPoolSize );
         // NOTE: connPool is _per_ repo, hence all of those will connect to same host (unless mirrors are used)
         // so, we are violating intentionally the RFC and we let the whole pool size to chase same host
@@ -102,7 +97,7 @@ public class HttpClientProxyUtil
                 // Using NTLM auth, adding it as first in policies
                 authPrefs.add( 0, AuthPolicy.NTLM );
 
-                log( Level.INFO, "... authentication setup for NTLM domain \"" + nras.getNtlmDomain() + "\"", logger );
+                logger( logger ).info( "... authentication setup for NTLM domain '{}'", nras.getNtlmDomain() );
 
                 httpConfiguration.setHost( nras.getNtlmHost() );
 
@@ -117,8 +112,8 @@ public class HttpClientProxyUtil
                 UsernamePasswordRemoteAuthenticationSettings uras = (UsernamePasswordRemoteAuthenticationSettings) ras;
 
                 // Using Username/Pwd auth, will not add NTLM
-                log( Level.INFO, "... authentication setup for remote storage with username \"" + uras.getUsername()
-                    + "\"", logger );
+                logger( logger ).info( "... authentication setup for remote storage with username '{}'",
+                    uras.getUsername() );
 
                 httpClient.getState().setCredentials( AuthScope.ANY,
                     new UsernamePasswordCredentials( uras.getUsername(), uras.getPassword() ) );
@@ -137,7 +132,7 @@ public class HttpClientProxyUtil
         {
             isProxyUsed = true;
 
-            log( Level.INFO, "... proxy setup with host \"" + rps.getHostname() + "\"", logger );
+            logger( logger ).info( "... proxy setup with host '{}'", rps.getHostname() );
 
             httpConfiguration.setProxy( rps.getHostname(), rps.getPort() );
 
@@ -153,7 +148,7 @@ public class HttpClientProxyUtil
                     }
                     catch ( PatternSyntaxException e )
                     {
-                        LOG.warn( "Invalid non proxy host regex: " + nonProxyHostRegex, e );
+                        logger( logger ).warn( "Invalid non proxy host regex: {}", nonProxyHostRegex, e );
                     }
                 }
                 httpConfiguration.getParams().setParameter(
@@ -184,15 +179,15 @@ public class HttpClientProxyUtil
                     if ( ctx.getRemoteAuthenticationSettings() != null
                         && ( ctx.getRemoteAuthenticationSettings() instanceof NtlmRemoteAuthenticationSettings ) )
                     {
-                        log( Level.WARNING, "... Apache Commons HttpClient 3.x is unable to use NTLM auth scheme\n"
-                            + " for BOTH server side and proxy side authentication!\n"
-                            + " You MUST reconfigure server side auth and use BASIC/DIGEST scheme\n"
-                            + " if you have to use NTLM proxy, otherwise it will not work!\n"
-                            + " *** SERVER SIDE AUTH OVERRIDDEN", logger );
+                        logger( logger ).warn(
+                            "... Apache Commons HttpClient 3.x is unable to use NTLM auth scheme\n"
+                                + " for BOTH server side and proxy side authentication!\n"
+                                + " You MUST reconfigure server side auth and use BASIC/DIGEST scheme\n"
+                                + " if you have to use NTLM proxy, otherwise it will not work!\n"
+                                + " *** SERVER SIDE AUTH OVERRIDDEN" );
                     }
 
-                    log( Level.WARNING, "... proxy authentication setup for NTLM domain \"" + nras.getNtlmDomain()
-                        + "\"", logger );
+                    logger( logger ).info( "... proxy authentication setup for NTLM domain '{}'", nras.getNtlmDomain() );
 
                     httpConfiguration.setHost( nras.getNtlmHost() );
 
@@ -209,9 +204,8 @@ public class HttpClientProxyUtil
                         (UsernamePasswordRemoteAuthenticationSettings) ras;
 
                     // Using Username/Pwd auth, will not add NTLM
-                    log( Level.INFO,
-                        "... proxy authentication setup for remote storage with username \"" + uras.getUsername()
-                            + "\"", logger );
+                    logger( logger ).info( "... proxy authentication setup for remote storage with username '{}'",
+                        uras.getUsername() );
 
                     httpClient.getState().setProxyCredentials( AuthScope.ANY,
                         new UsernamePasswordCredentials( uras.getUsername(), uras.getPassword() ) );
@@ -225,71 +219,40 @@ public class HttpClientProxyUtil
         // no proxy and BASIC auth is used
         if ( isSimpleAuthUsed && !isProxyUsed )
         {
-            log( Level.INFO, "... simple scenario: simple authentication used with no proxy in between target and us, will use preemptive authentication", logger );
-            
+            logger( logger ).info(
+                "... simple scenario: simple authentication used with no proxy in between target and us,"
+                    + " will use preemptive authentication" );
+
             // we have authentication, let's do it preemptive
             httpClient.getParams().setAuthenticationPreemptive( true );
         }
 
         // mark the fact that NTLM is in use
-        if ( isNtlmUsed )
+        // but ONLY IF IT CHANGED!
+        // Otherwise, doing it always, actually marks the ctx itself as "changed", causing an avalanche of other
+        // consequences, like resetting all the HTTP clients of all remote storages (coz they think there is a change
+        // in proxy or remote connection settings, etc).
+        final Boolean isNtlmUsedOldValue = (Boolean) ctx.getContextObject( NTLM_IS_IN_USE_KEY );
+        if ( isNtlmUsedOldValue == null || isNtlmUsedOldValue.booleanValue() != isNtlmUsed )
         {
-            ctx.putContextObject( NTLM_IS_IN_USE_KEY, Boolean.TRUE );
-        }
-        else
-        {
-            ctx.putContextObject( NTLM_IS_IN_USE_KEY, Boolean.FALSE );
+            if ( isNtlmUsed )
+            {
+                ctx.putContextObject( NTLM_IS_IN_USE_KEY, Boolean.TRUE );
+            }
+            else
+            {
+                ctx.putContextObject( NTLM_IS_IN_USE_KEY, Boolean.FALSE );
+            }
         }
     }
 
-    /**
-     * Coding around plexus logger as this class is NOT a component and should not be using this type of logging.
-     * 
-     * @param level
-     * @param message
-     * @param logger
-     */
-    private static void log( Level level, String message, Logger logger )
+    private static Logger logger( final Logger logger )
     {
         if ( logger != null )
         {
-            if ( level.equals( Level.SEVERE ) )
-            {
-                logger.error( message );
-            }
-            else if ( level.equals( Level.WARNING ) )
-            {
-                logger.warn( message );
-            }
-            else if ( level.equals( Level.INFO ) )
-            {
-                logger.info( message );
-            }
-            else
-            {
-                logger.debug( message );
-            }
+            return logger;
         }
-        else
-        {
-            if ( level.equals( Level.SEVERE ) )
-            {
-                LOG.error( message );
-            }
-            else if ( level.equals( Level.WARNING ) )
-            {
-                LOG.warn( message );
-            }
-            else if ( level.equals( Level.INFO ) )
-            {
-                LOG.info( message );
-            }
-            else
-            {
-                LOG.debug( message );
-            }
-        }
-
+        return LOGGER;
     }
 
 }

@@ -1,20 +1,14 @@
 /*
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 (function() {
 
@@ -22,6 +16,10 @@
     passwordPlaceholder : '|$|N|E|X|U|S|$|',
     edition : '',
     editionShort : '',
+    version : '',
+    attributionsURL : '',
+    purchaseURL : '',
+    userLicenseURL : '',
     authToken : '',
     lowercase : function(str) {
       if (Ext.isEmpty(str))
@@ -96,6 +94,11 @@
       {
         return 'Only letters, digits, underscores(_), hyphens(-), and dots(.) are allowed in ID';
       }
+    },
+
+    sortFn : function(r1, r2) {
+        var v1 = Sonatype.utils.lowercase(r1), v2 = Sonatype.utils.lowercase(r2);
+        return v1 > v2 ? 1 : (v1 < v2 ? -1 : 0);
     },
 
     convert : {
@@ -238,13 +241,35 @@
         {
           message += serverMessage;
         }
+
+        var responseStatus = response.status;
+        var responseStatusText = response.statusText;
+
+        // the prompt is in the following format
+
+        // <message> (optional)
+        //
+        // <response text> (if 400)
+        //
+        // <detail> (include status code if valid)
+        //
+        // <retry message> (optional)
+
         Sonatype.MessageBox.show({
               title : "Error",
-              msg : ((message ? message : '')
-                  + (response.status == 400 && showResponseText ? ('<br /><br />' + response.responseText) : (options && options.hideErrorStatus ? '' : (response.status ? '<br /><br />Nexus returned an error: ERROR ' + response.status + ': '
-                      + response.statusText : '<br /><br />There was an error communicating with the Nexus server: ' + response.statusText + '<br />' + 'Check the status of the server, and log in to the application again.'))) + (offerRestart
-                  ? '<br /><br />Click OK to reload the console or ' + 'CANCEL if you wish to retry the same action in a little while.'
-                  : '')),
+              msg : ((message && (responseStatus != -1) ? message : '')
+                  + (responseStatus == 400 && showResponseText ?
+                      ('<br /><br />' + response.responseText) :
+                      (options && options.hideErrorStatus ? '' :
+                              ( (responseStatus && responseStatus != -1 ) ? // hide the "-1 status"
+                                      '<br /><br />Nexus returned an error: ERROR ' + responseStatus + ': ' + responseStatusText :
+                                      '<br /><br />There was an error communicating with the server: request timed out.')
+                              )
+                      )
+                  + (offerRestart ?
+                      '<br /><br />Click OK to reload the console or CANCEL if you wish to retry the same action in a little while.' :
+                      '')
+              ),
               buttons : offerRestart ? Sonatype.MessageBox.OKCANCEL : Sonatype.MessageBox.OK,
               icon : Sonatype.MessageBox.ERROR,
               animEl : 'mb3',
@@ -766,6 +791,18 @@
               {
                 Sonatype.repoServer.RepoServer.loginForm.find('name', 'password')[0].focus(true);
               }
+              
+              Ext.Ajax.request({
+                  scope : this,
+                  method : 'GET',
+                  url : Sonatype.config.repos.urls.logout,
+                  callback : function(options, success, response) {
+                	Sonatype.utils.clearCookie('JSESSIONID');
+                    Sonatype.utils.authToken = null;
+                    Sonatype.view.justLoggedOut = true;
+                  }
+                });
+              
             }
 
           });
@@ -798,6 +835,11 @@
 
                 Sonatype.utils.edition = respObj.data.editionLong;
                 Sonatype.utils.editionShort = respObj.data.editionShort;
+                Sonatype.utils.version = respObj.data.version;
+                Sonatype.utils.attributionsURL = respObj.data.attributionsURL;
+                Sonatype.utils.purchaseURL = respObj.data.purchaseURL;
+                Sonatype.utils.userLicenseURL = respObj.data.userLicenseURL;
+
                 Sonatype.utils.formattedAppName = Sonatype.utils.parseFormattedAppName(respObj.data.formattedAppName);
 
                 Ext.get('logo').update('<span>' + Sonatype.utils.formattedAppName + '</span>');
@@ -838,7 +880,7 @@
               if (baseUrlMismatch && Sonatype.lib.Permissions.checkPermission('nexus:settings', Sonatype.lib.Permissions.READ))
               {
                 Sonatype.utils.postWelcomePageAlert('<b>WARNING:</b> ' + 'Base URL setting of <a href="' + baseUrl + '">' + baseUrl + '</a> ' + 'does not match your actual URL! ' + 'If you\'re running Apache mod_proxy, here\'s '
-                    + '<a href="http://nexus.sonatype.org/about/faq.html#' + 'QHowcanIintegrateNexuswithApacheHttpdandModProxy">' + 'more information</a> on configuring Nexus with it.');
+                    + '<a href="http://links.sonatype.com/products/nexus/oss/docs-mod-proxy">' + 'more information</a> on configuring Nexus with it.' );
               }
 
               Sonatype.Events.fireEvent('nexusStatus');
@@ -1036,7 +1078,7 @@
       credentials.push({
             xtype : 'panel',
             style : 'padding-bottom: 10px',
-            html : 'In order to submit a Problem Report you must have JIRA account. Click here to <a href="https://issues.sonatype.org/secure/Signup!default.jspa" target="_blank">Sign Up</a>.'
+            html : 'In order to submit a Problem Report you must have JIRA account. Click here to <a href="http://links.sonatype.com/products/nexus/oss/issues-signup" target="_blank">Sign Up</a>.'
           });
       credentials.push({
             xtype : 'textfield',

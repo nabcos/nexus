@@ -1,26 +1,21 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.integrationtests.nexus3638;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 
+import java.io.File;
 import java.net.URL;
 import java.util.List;
 
@@ -48,7 +43,7 @@ public class Nexus3638IndexProxiedMavenPluginIT
     public void start()
         throws Exception
     {
-        server = (ControlledServer) lookup( ControlledServer.ROLE );
+        server = lookup( ControlledServer.class );
         server.addServer( "nexus3638", getTestFile( "repo" ), 10 );
         server.start();
     }
@@ -114,10 +109,15 @@ public class Nexus3638IndexProxiedMavenPluginIT
         Assert.assertFalse( items.isEmpty() );
         Assert.assertEquals( "maven-plugin", items.get( 0 ).getPackaging() );
 
-        String logContent = FileUtils.readFileToString( nexusLog );
-        // NEXUS-3707
-        MatcherAssert.assertThat( logContent,
-            not( containsString( "Rename operation failed after -1 retries in -1 ms intervals" ) ) );
-        MatcherAssert.assertThat( logContent, not( containsString( "java.util.zip.ZipException" ) ) );
+        final File nexusLog = getNexusLogFile();
+
+        if ( nexusLog != null )
+        {
+            String logContent = FileUtils.readFileToString( nexusLog );
+            // NEXUS-3707
+            MatcherAssert.assertThat( logContent,
+                not( containsString( "Rename operation failed after -1 retries in -1 ms intervals" ) ) );
+            MatcherAssert.assertThat( logContent, not( containsString( "java.util.zip.ZipException" ) ) );
+        }
     }
 }

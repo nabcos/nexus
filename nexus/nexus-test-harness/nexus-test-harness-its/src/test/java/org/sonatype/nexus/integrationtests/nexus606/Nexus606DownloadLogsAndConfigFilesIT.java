@@ -1,24 +1,19 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.integrationtests.nexus606;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -50,11 +45,11 @@ public class Nexus606DownloadLogsAndConfigFilesIT
 {
 
     @BeforeClass
-    public void setSecureTest(){
+    public void setSecureTest()
+    {
         TestContainer.getInstance().getTestContext().setSecureTest( true );
     }
-    
-    @SuppressWarnings( "unchecked" )
+
     @Test
     public void getLogsTest()
         throws Exception
@@ -75,8 +70,7 @@ public class Nexus606DownloadLogsAndConfigFilesIT
             LogsListResource logResource = iter.next();
 
             // check the contents of each log now...
-            // FIXME not possible to do that right now, we did cheat log4j to move the log files around
-            // this.downloadAndConfirmLog( logResource.getResourceURI(), logResource.getName() );
+            this.downloadAndConfirmLog( logResource.getResourceURI(), logResource.getName() );
         }
     }
 
@@ -134,9 +128,19 @@ public class Nexus606DownloadLogsAndConfigFilesIT
         {
             downloadedLog.append( (char) bReader.read() );
         }
-        String logOnDisk = FileUtils.fileRead( nexusLog );
-        Assert.assertTrue( logOnDisk.contains( downloadedLog ), "Downloaded log should be similar to log file from disk.\nNOTE: its possible the file could have rolled over.\nTrying to match:\n"
-                                                   + downloadedLog );
+
+        Assert.assertTrue( downloadedLog.length() > 0 );
+
+        final File nexusLog = getNexusLogFile();
+
+        if ( nexusLog != null )
+        {
+            String logOnDisk = FileUtils.fileRead( nexusLog );
+            Assert.assertTrue(
+                logOnDisk.contains( downloadedLog ),
+                "Downloaded log should be similar to log file from disk.\nNOTE: its possible the file could have rolled over.\nTrying to match:\n"
+                    + downloadedLog );
+        }
     }
 
     private ConfigurationsListResource getConfigFromList( List<ConfigurationsListResource> configList, String name )

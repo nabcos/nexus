@@ -16,76 +16,52 @@
  * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
  * All other trademarks are the property of their respective owners.
  */
-package org.sonatype.nexus.error.reporting.bundle;
+package org.sonatype.nexus.error.reporting;
 
+import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
-import java.io.OutputStream;
-import java.io.OutputStreamWriter;
-import java.io.Writer;
 
-import org.codehaus.plexus.component.annotations.Component;
-import org.codehaus.plexus.component.annotations.Requirement;
-import org.codehaus.plexus.swizzle.IssueSubmissionException;
-import org.codehaus.plexus.swizzle.IssueSubmissionRequest;
-import org.codehaus.plexus.util.IOUtil;
 import org.sonatype.nexus.configuration.application.NexusConfiguration;
 import org.sonatype.security.configuration.model.SecurityConfiguration;
 import org.sonatype.security.configuration.model.io.xpp3.SecurityConfigurationXpp3Writer;
 import org.sonatype.security.configuration.source.SecurityConfigurationSource;
-import org.sonatype.sisu.pr.bundle.Bundle;
-import org.sonatype.sisu.pr.bundle.BundleAssembler;
-import org.sonatype.sisu.pr.bundle.ManagedBundle;
-import org.sonatype.sisu.pr.bundle.StorageManager;
 
-@Component(role = BundleAssembler.class, hint = "security-configuration.xml")
 public class SecurityConfigurationXmlHandler
     extends AbstractXmlHandler
-    implements BundleAssembler
 {
-    @Requirement
-    SecurityConfigurationSource source;
-    
-    @Requirement
-    NexusConfiguration nexusConfig;
-    
-    @Requirement
-    StorageManager storageManager;
-    
-    @Override
-    public boolean isParticipating( IssueSubmissionRequest request )
-    {
-        return source.getConfiguration() != null;
-    }
-
-    @Override
-    public Bundle assemble( IssueSubmissionRequest request )
-        throws IssueSubmissionException
+    public File getFile( SecurityConfigurationSource source, NexusConfiguration nexusConfig )
+        throws IOException
     {
         SecurityConfiguration configuration = ( SecurityConfiguration )cloneViaXml( source.getConfiguration() );
         
+        // No config ??
+        if ( configuration == null )
+        {
+            return null;
+        }
+        
         configuration.setAnonymousPassword( PASSWORD_MASK );
         
-        SecurityConfigurationXpp3Writer xppWriter = new SecurityConfigurationXpp3Writer();
+        SecurityConfigurationXpp3Writer writer = new SecurityConfigurationXpp3Writer();
         
-        Writer writer = null;
+        FileWriter fWriter = null;
+        File tempFile = null;
         
         try
         {
-            ManagedBundle bundle = storageManager.createBundle( "security-configuration.xml", "application/xml" );
-            OutputStream out = bundle.getOutputStream();
-            writer = new OutputStreamWriter( out );
-            xppWriter.write( writer, configuration );
-            writer.close();
-            return bundle;
-        }
-        catch (IOException e)
-        {
-            throw new IssueSubmissionException( "Could not assemble security-configuration.xml-bundle", e );
+            tempFile = new File( nexusConfig.getTemporaryDirectory(), "security-configuration.xml." + System.currentTimeMillis() );
+            fWriter = new FileWriter( tempFile );
+            writer.write( fWriter, configuration );
         }
         finally
         {
-            IOUtil.close(writer);
+            if ( fWriter != null )
+            {
+                fWriter.close();
+            }
         }
         
+        return tempFile;
     }
 }

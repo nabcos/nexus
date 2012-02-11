@@ -1,20 +1,14 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.proxy.attributes;
 
@@ -46,12 +40,12 @@ import com.carrotsearch.junitbenchmarks.annotation.BenchmarkMethodChart;
 
 /**
  * AttributeStorage implementation driven by XStream.
- *
+ * 
  * @author cstamas
  */
-@BenchmarkHistoryChart()
-@BenchmarkMethodChart()
-@AxisRange(min = 0)
+@BenchmarkHistoryChart( )
+@BenchmarkMethodChart( )
+@AxisRange( min = 0 )
 public class DefaultAttributeStorageTest
     extends AbstractNexusTestEnvironment
 {
@@ -73,7 +67,7 @@ public class DefaultAttributeStorageTest
     {
         super.setUp();
 
-        attributeStorage = lookup( AttributeStorage.class );
+        attributeStorage = lookup( AttributeStorage.class, "fs" );
 
         repositoryItemUidFactory = lookup( RepositoryItemUidFactory.class );
 
@@ -100,7 +94,7 @@ public class DefaultAttributeStorageTest
         {
             FileUtils.deleteDirectory( ( (DefaultFSAttributeStorage) attributeStorage ).getWorkingDirectory() );
         }
-        else
+        else if ( attributeStorage instanceof DefaultLSAttributeStorage )
         {
             FileUtils.deleteDirectory( new File( localStorageDirectory, ".nexus/attributes" ) );
         }
@@ -118,13 +112,13 @@ public class DefaultAttributeStorageTest
 
         file.getAttributes().put( "kuku", "kuku" );
 
-        attributeStorage.putAttribute( file );
+        attributeStorage.putAttributes( file.getRepositoryItemUid(), file.getRepositoryItemAttributes() );
 
         RepositoryItemUid uid = getRepositoryItemUidFactory().createUid( repository, "/a.txt" );
-        DefaultStorageFileItem file1 = (DefaultStorageFileItem) attributeStorage.getAttributes( uid );
+        Attributes file1 = attributeStorage.getAttributes( uid );
 
-        assertTrue( file1.getAttributes().containsKey( "kuku" ) );
-        assertTrue( "kuku".equals( file1.getAttributes().get( "kuku" ) ) );
+        assertTrue( file1.containsKey( "kuku" ) );
+        assertTrue( "kuku".equals( file1.get( "kuku" ) ) );
     }
 
     @Test
@@ -137,18 +131,20 @@ public class DefaultAttributeStorageTest
 
         file.getAttributes().put( "kuku", "kuku" );
 
-        attributeStorage.putAttribute( file );
+        attributeStorage.putAttributes( file.getRepositoryItemUid(), file.getRepositoryItemAttributes() );
 
         RepositoryItemUid uid = getRepositoryItemUidFactory().createUid( repository, "/a.txt" );
-        DefaultStorageFileItem file1 = (DefaultStorageFileItem) attributeStorage.getAttributes( uid );
+        Attributes file1 = attributeStorage.getAttributes( uid );
 
-        assertTrue( file1.getAttributes().containsKey( "kuku" ) );
-        assertTrue( "kuku".equals( file1.getAttributes().get( "kuku" ) ) );
+        assertTrue( file1.containsKey( "kuku" ) );
+        assertTrue( "kuku".equals( file1.get( "kuku" ) ) );
 
         // this above is same as in testSimplePutGet(), but now we will replace the attribute file
 
         // reverted back to "old" attributes
-        File attributeFile = new File( ((DefaultFSAttributeStorage)attributeStorage).getWorkingDirectory(), repository.getId() + "/a.txt" );
+        File attributeFile =
+            new File( ( (DefaultFSAttributeStorage) attributeStorage ).getWorkingDirectory(), repository.getId()
+                + "/a.txt" );
         // File attributeFile = new File( localStorageDirectory, ".nexus/attributes/a.txt" );
 
         FileUtils.fileWrite( attributeFile.getAbsolutePath(), "<file" );
@@ -156,7 +152,7 @@ public class DefaultAttributeStorageTest
         // try to read it, we should not get NPE
         try
         {
-            file1 = (DefaultStorageFileItem) attributeStorage.getAttributes( uid );
+            file1 = attributeStorage.getAttributes( uid );
         }
         catch ( NullPointerException e )
         {
@@ -176,7 +172,7 @@ public class DefaultAttributeStorageTest
 
         file.getAttributes().put( "kuku", "kuku" );
 
-        attributeStorage.putAttribute( file );
+        attributeStorage.putAttributes( file.getRepositoryItemUid(), file.getRepositoryItemAttributes() );
 
         RepositoryItemUid uid = getRepositoryItemUidFactory().createUid( repository, "/b.txt" );
 

@@ -1,51 +1,67 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.plugins.lvo;
 
 import java.io.IOException;
 import java.util.Map;
 
-import org.apache.maven.index.ArtifactInfo;
 import org.codehaus.plexus.component.annotations.Component;
 import org.codehaus.plexus.component.annotations.Requirement;
-import org.codehaus.plexus.logging.AbstractLogEnabled;
 import org.codehaus.plexus.util.StringUtils;
+import org.sonatype.nexus.logging.AbstractLoggingComponent;
 import org.sonatype.nexus.plugins.lvo.config.LvoPluginConfiguration;
 import org.sonatype.nexus.plugins.lvo.config.model.CLvoKey;
 import org.sonatype.nexus.proxy.NoSuchRepositoryException;
+import org.sonatype.nexus.proxy.maven.version.GenericVersionParser;
+import org.sonatype.nexus.proxy.maven.version.InvalidVersionSpecificationException;
+import org.sonatype.nexus.proxy.maven.version.Version;
+import org.sonatype.nexus.proxy.maven.version.VersionParser;
+
+import com.google.common.annotations.VisibleForTesting;
 
 @Component( role = LvoPlugin.class )
 public class DefaultLvoPlugin
-    extends AbstractLogEnabled
+    extends AbstractLoggingComponent
     implements LvoPlugin
 {
+    private final VersionParser versionScheme = new GenericVersionParser();
+
     @Requirement
     private LvoPluginConfiguration lvoPluginConfiguration;
 
     @Requirement( role = DiscoveryStrategy.class )
     private Map<String, DiscoveryStrategy> strategies;
 
+    /**
+     * For plexus injection.
+     */
+    public DefaultLvoPlugin()
+    {
+    }
+
+    @VisibleForTesting
+    DefaultLvoPlugin( final LvoPluginConfiguration lvoPluginConfiguration,
+                             final Map<String, DiscoveryStrategy> strategies )
+    {
+        this.lvoPluginConfiguration = lvoPluginConfiguration;
+        this.strategies = strategies;
+    }
+
     public DiscoveryResponse getLatestVersionForKey( String key )
         throws NoSuchKeyException,
-            NoSuchStrategyException,
-            NoSuchRepositoryException,
-            IOException
+        NoSuchStrategyException,
+        NoSuchRepositoryException,
+        IOException
     {
         if ( lvoPluginConfiguration.isEnabled() )
         {
@@ -55,8 +71,9 @@ public class DefaultLvoPlugin
 
             if ( StringUtils.isEmpty( strategyId ) )
             {
-                // default it
-                strategyId = "index";
+                // default value was 'index', not available anymore
+                getLogger().warn( "Misconfigured version check key '{}': strategy ID missing.", key );
+                throw new NoSuchStrategyException( info.getStrategy() );
             }
 
             if ( strategies.containsKey( strategyId ) )
@@ -80,40 +97,40 @@ public class DefaultLvoPlugin
 
     public DiscoveryResponse queryLatestVersionForKey( String key, String v )
         throws NoSuchKeyException,
-            NoSuchStrategyException,
-            NoSuchRepositoryException,
-            IOException
+        NoSuchStrategyException,
+        NoSuchRepositoryException,
+        IOException
     {
         if ( lvoPluginConfiguration.isEnabled() )
         {
-            DiscoveryResponse lv = getLatestVersionForKey( key );
+            DiscoveryResponse response = getLatestVersionForKey( key );
 
-            if ( !lv.isSuccessful() )
+            if ( !response.isSuccessful() )
             {
                 // nothing to compare to
-                return lv;
+                return response;
             }
 
             // compare the two versions
 
-            ArtifactInfo ca = new ArtifactInfo();
-            ca.groupId = "dummy";
-            ca.artifactId = "dummy";
-            ca.version = "[" + v + "]";
-
-            ArtifactInfo la = new ArtifactInfo();
-            la.groupId = "dummy";
-            la.artifactId = "dummy";
-            la.version = "[" + lv.getVersion() + "]";
-
-            if ( ArtifactInfo.VERSION_COMPARATOR.compare( la, ca ) >= 0 )
+            try
             {
-                lv.getResponse().clear();
-
-                lv.setSuccessful( true );
+                Version versionCurrent = versionScheme.parseVersion( v );
+                Version versionReceived = versionScheme.parseVersion( response.getVersion() );
+                if ( versionReceived.compareTo( versionCurrent ) <= 0 )
+                {
+                    // version not newer
+                    response.setSuccessful( false );
+                }
+            }
+            catch ( InvalidVersionSpecificationException e )
+            {
+                getLogger().warn( "Could not parse version ({}/{}/{})",
+                          new String[]{ key, v, response.getVersion() } );
+                response.setSuccessful( false );
             }
 
-            return lv;
+            return response;
         }
         else
         {
@@ -125,7 +142,7 @@ public class DefaultLvoPlugin
     {
         DiscoveryResponse response = new DiscoveryResponse( null );
 
-        response.setSuccessful( true );
+        response.setSuccessful( false );
 
         return response;
     }

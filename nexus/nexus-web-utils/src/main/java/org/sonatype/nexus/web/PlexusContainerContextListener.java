@@ -1,25 +1,21 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.web;
 
 import java.io.File;
-import java.net.URL;
+import java.net.MalformedURLException;
+import java.util.Arrays;
+import java.util.Map;
 
 import javax.servlet.ServletContext;
 import javax.servlet.ServletContextEvent;
@@ -30,12 +26,17 @@ import org.codehaus.plexus.DefaultContainerConfiguration;
 import org.codehaus.plexus.DefaultPlexusContainer;
 import org.codehaus.plexus.PlexusConstants;
 import org.codehaus.plexus.PlexusContainer;
+import org.codehaus.plexus.PlexusContainerException;
 import org.codehaus.plexus.util.StringUtils;
 import org.sonatype.appcontext.AppContext;
-import org.sonatype.appcontext.AppContextFactory;
+import org.sonatype.appcontext.AppContextException;
 import org.sonatype.appcontext.AppContextRequest;
-import org.sonatype.appcontext.PropertiesFileContextFiller;
-import org.sonatype.appcontext.SimpleBasedirDiscoverer;
+import org.sonatype.appcontext.Factory;
+import org.sonatype.appcontext.source.MapEntrySource;
+import org.sonatype.appcontext.source.PropertiesFileEntrySource;
+import org.sonatype.appcontext.source.StaticEntrySource;
+
+import com.google.inject.Module;
 
 /**
  * This ServeletContextListener boots up Plexus in a webapp environment, if needed. It is safe to have it multiple times
@@ -46,41 +47,65 @@ import org.sonatype.appcontext.SimpleBasedirDiscoverer;
 public class PlexusContainerContextListener
     implements ServletContextListener
 {
-    public static final String PLEXUS_CONFIG_PARAM = "plexus-config";
-
-    public static final String PLEXUS_PROPERTIES_PARAM = "plexus-properties";
-
-    public static final String DEFAULT_PLEXUS_CONFIG = "/WEB-INF/plexus.xml";
-
-    public static final String DEFAULT_PLEXUS_PROPERTIES = "/WEB-INF/plexus.properties";
-
-    private AppContextFactory appContextFactory = new AppContextFactory();
+    public static final String CUSTOM_MODULES = "customModules";
 
     private PlexusContainer plexusContainer;
 
-    public void contextInitialized( ServletContextEvent sce )
+    /**
+     * The one in bundle/conf/nexus.properties when ran as bundle, in WAR it does not exists.
+     */
+    private File nexusPropertiesFile;
+
+    /**
+     * The one in nexus/WEB-INF/nexus.properties, always exists
+     */
+    private File nexusDefaultPropertiesFile;
+
+    /**
+     * The plexus.xml file in nexus/WEB-INF/plexus.xml, always exists
+     */
+    private File plexusXmlFile;
+
+    public void contextInitialized( final ServletContextEvent sce )
     {
-        ServletContext context = sce.getServletContext();
+        final ServletContext context = sce.getServletContext();
 
         // create a container if there is none yet
         if ( context.getAttribute( PlexusConstants.PLEXUS_KEY ) == null )
         {
             try
             {
-                AppContext plexusContext = createContainerContext( context );
+                AppContext plexusContext =
+                    createContainerContext( context,
+                        (Map<String, Object>) context.getAttribute( AppContext.class.getName() ) );
 
                 ContainerConfiguration plexusConfiguration =
                     new DefaultContainerConfiguration().setName( context.getServletContextName() ).setContainerConfigurationURL(
-                        buildConfigurationURL( context, PLEXUS_CONFIG_PARAM, DEFAULT_PLEXUS_CONFIG ) ).setContext(
-                        plexusContext ).setAutoWiring( true ).setClassPathScanning( PlexusConstants.SCANNING_ON ).setComponentVisibility(
-                        PlexusConstants.GLOBAL_VISIBILITY );
-                ;
+                        plexusXmlFile.toURI().toURL() ).setContext( (Map) plexusContext ).setAutoWiring( true ).setClassPathScanning(
+                        PlexusConstants.SCANNING_INDEX ).setComponentVisibility( PlexusConstants.GLOBAL_VISIBILITY );
 
-                plexusContainer = new DefaultPlexusContainer( plexusConfiguration );
+                final Module[] customModules = (Module[]) context.getAttribute( CUSTOM_MODULES );
+
+                if ( customModules != null )
+                {
+                    plexusContainer = new DefaultPlexusContainer( plexusConfiguration, customModules );
+                }
+                else
+                {
+                    plexusContainer = new DefaultPlexusContainer( plexusConfiguration );
+                }
 
                 context.setAttribute( PlexusConstants.PLEXUS_KEY, plexusContainer );
+
+                context.setAttribute( AppContext.class.getName(), plexusContext );
             }
-            catch ( Exception e )
+            catch ( PlexusContainerException e )
+            {
+                sce.getServletContext().log( "Could not start Plexus container!", e );
+
+                throw new IllegalStateException( "Could not start Plexus container!", e );
+            }
+            catch ( MalformedURLException e )
             {
                 sce.getServletContext().log( "Could not start Plexus container!", e );
 
@@ -89,7 +114,7 @@ public class PlexusContainerContextListener
         }
     }
 
-    public void contextDestroyed( ServletContextEvent sce )
+    public void contextDestroyed( final ServletContextEvent sce )
     {
         if ( plexusContainer != null )
         {
@@ -99,86 +124,83 @@ public class PlexusContainerContextListener
 
     // ==
 
-    protected AppContext createContainerContext( ServletContext context )
-        throws Exception
+    protected AppContext createContainerContext( final ServletContext context, final Map<String, Object> parent )
+        throws AppContextException
     {
-        String baseDir = context.getRealPath( "/WEB-INF" );
-
-        File basedirFile = null;
-
-        if ( !StringUtils.isEmpty( baseDir ) )
+        if ( parent == null )
         {
-            context.log( "Setting Plexus basedir context variable to: " + baseDir );
-
-            basedirFile = new File( baseDir );
+            context.log( "Configuring Nexus in vanilla WAR..." );
         }
         else
         {
-            context.log( "CANNOT set Plexus basedir! (are we in unpacked WAR?)" );
-
-            basedirFile = new File( "" );
+            context.log( "Configuring Nexus in bundle..." );
         }
 
-        AppContextRequest request = appContextFactory.getDefaultAppContextRequest();
+        File basedirFile = null;
+        File warWebInfFile = null;
 
-        // TODO: disabling this feature for now, it interferes with Juven's stuff for logging
-        // TODO: but this change makes impossible to have more than one Nexus in a webapp container!
-        // String servletContextName = context.getServletContextName();
+        String baseDirProperty = System.getProperty( "bundleBasedir" );
 
-        // if ( servletContextName != null )
-        // {
-        // request.setName( context.getServletContextName() );
-        // }
-        // TODO: ^^^^
+        if ( !StringUtils.isEmpty( baseDirProperty ) )
+        {
+            // Nexus as bundle case
+            context.log( "Setting Plexus basedir context variable to (pre-set in System properties): "
+                + baseDirProperty );
 
-        // just pass over the already found basedir
-        request.setBasedirDiscoverer( new SimpleBasedirDiscoverer( basedirFile ) );
+            basedirFile = new File( baseDirProperty ).getAbsoluteFile();
+        }
 
-        // create a properties filler for plexus.properties, that will fail if props file not found
-        File containerPropertiesFile = new File( basedirFile, "plexus.properties" );
+        String warWebInfFilePath = context.getRealPath( "/WEB-INF" );
 
-        PropertiesFileContextFiller plexusPropertiesFiller =
-            new PropertiesFileContextFiller( containerPropertiesFile, true );
+        if ( !StringUtils.isEmpty( warWebInfFilePath ) )
+        {
+            warWebInfFile = new File( warWebInfFilePath ).getAbsoluteFile();
 
-        // add it to fillers as very 1st resource, and leaving others in
-        request.getContextFillers().add( 0, plexusPropertiesFiller );
+            if ( basedirFile == null )
+            {
+                context.log( "Setting Plexus basedir context variable to (discovered from Servlet container): "
+                    + warWebInfFile );
 
-        AppContext response = appContextFactory.getAppContext( request );
+                basedirFile = warWebInfFile;
+            }
+        }
+        else
+        {
+            context.log( "CANNOT set Plexus basedir, Nexus cannot run from non-upacked WAR!" );
 
-        // put the app booter into context too
-        response.put( getClass().getName(), this );
+            throw new IllegalStateException( "Could not set Plexus basedir, Nexus cannot run from non-upacked WAR!" );
+        }
 
-        // put in the basedir for plexus apps backward compat
-        response.put( "basedir", response.getBasedir().getAbsolutePath() );
+        // plexus files are always here
+        nexusDefaultPropertiesFile = new File( warWebInfFile, "plexus.properties" );
+        plexusXmlFile = new File( warWebInfFile, "plexus.xml" );
 
-        // wrap it in, to make Plexus friendly
-        return response;
+        // no "real" parenting for now
+        // for historical reasons, honor the "plexus" prefix too
+        AppContextRequest request = Factory.getDefaultRequest( "nexus", null, Arrays.asList( "plexus" ) );
+
+        // if in bundle only
+        if ( parent != null && basedirFile != null )
+        {
+            nexusPropertiesFile = new File( basedirFile, "conf/nexus.properties" );
+
+            // add the user overridable properties file, but it might not be present
+            request.getSources().add( 0, new PropertiesFileEntrySource( nexusPropertiesFile, false ) );
+        }
+
+        // add the "defaults" properties files, must be present
+        request.getSources().add( 0, new PropertiesFileEntrySource( nexusDefaultPropertiesFile, true ) );
+
+        // add parent if found
+        if ( parent != null )
+        {
+            // for now, once we resolve classloading issues....
+            request.getSources().add( 0, new MapEntrySource( "quasiParent", parent ) );
+        }
+
+        // set basedir as LAST, no overrides for it
+        request.getSources().add( new StaticEntrySource( "bundleBasedir", basedirFile.getAbsolutePath() ) );
+
+        return Factory.create( request );
     }
-
-    private URL buildConfigurationURL( final ServletContext servletContext, final String paramKey,
-                                       final String defaultValue )
-    {
-        String plexusConfigPath = servletContext.getInitParameter( paramKey );
-
-        if ( plexusConfigPath == null )
-        {
-            plexusConfigPath = defaultValue;
-        }
-
-        URL url = null;
-
-        try
-        {
-            url = servletContext.getResource( plexusConfigPath );
-        }
-        catch ( Exception e )
-        {
-            throw new RuntimeException( "Could not load plexus configuration from: '" + plexusConfigPath + "'", e );
-        }
-
-        servletContext.log( "Loading plexus configuration from: '" + url.toString() + "'" );
-
-        return url;
-    }
-
 }

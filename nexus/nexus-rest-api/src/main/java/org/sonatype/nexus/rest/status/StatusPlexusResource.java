@@ -1,20 +1,14 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.rest.status;
 
@@ -50,11 +44,11 @@ public class StatusPlexusResource
     extends AbstractUIPermissionCalculatingPlexusResource
     implements ManagedPlexusResource
 {
-    public static final String RESOURCE_URI = "/status"; 
+    public static final String RESOURCE_URI = "/status";
 
     @Requirement
     private Nexus nexus;
-    
+
     @Override
     public Object getPayloadInstance()
     {
@@ -97,6 +91,12 @@ public class StatusPlexusResource
         resource.setEditionLong( status.getEditionLong() );
 
         resource.setEditionShort( status.getEditionShort() );
+
+        resource.setAttributionsURL( status.getAttributionsURL() );
+
+        resource.setPurchaseURL( status.getPurchaseURL() );
+
+        resource.setUserLicenseURL( status.getUserLicenseURL() );
 
         resource.setState( status.getState().toString() );
 
@@ -150,18 +150,18 @@ public class StatusPlexusResource
     private NexusAuthenticationClientPermissions getClientPermissions(Request request) throws ResourceException
     {
         AuthenticationClientPermissions originalClientPermissions = getClientPermissionsForCurrentUser( request );
-        
+
         // TODO: this is a modello work around,
         // the SystemStatus could not include a field of type AuthenticationClientPermissions
         // because it is in a different model, but I can extend that class... and include it.
-        
+
         NexusAuthenticationClientPermissions clientPermissions = new NexusAuthenticationClientPermissions();
         clientPermissions.setLoggedIn( originalClientPermissions.isLoggedIn() );
         clientPermissions.setLoggedInUsername( originalClientPermissions.getLoggedInUsername() );
         clientPermissions.setLoggedInUserSource( originalClientPermissions.getLoggedInUserSource() );
         clientPermissions.setLoggedInUserSource( originalClientPermissions.getLoggedInUserSource() );
         clientPermissions.setPermissions( originalClientPermissions.getPermissions() );
-        
+
         return clientPermissions;
     }
 

@@ -1,20 +1,14 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.proxy.storage.local.fs;
 
@@ -27,34 +21,38 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
-import org.codehaus.plexus.component.annotations.Component;
-import org.codehaus.plexus.component.annotations.Requirement;
-import org.codehaus.plexus.logging.Logger;
+import javax.inject.Named;
+import javax.inject.Singleton;
+
 import org.codehaus.plexus.util.FileUtils;
 import org.codehaus.plexus.util.IOUtil;
+import org.sonatype.nexus.logging.AbstractLoggingComponent;
 import org.sonatype.nexus.proxy.ItemNotFoundException;
 import org.sonatype.nexus.proxy.LocalStorageException;
 import org.sonatype.nexus.proxy.ResourceStoreRequest;
+import org.sonatype.nexus.proxy.access.Action;
 import org.sonatype.nexus.proxy.item.ContentLocator;
+import org.sonatype.nexus.proxy.item.RepositoryItemUidLock;
 import org.sonatype.nexus.proxy.item.StorageItem;
+import org.sonatype.nexus.proxy.item.uid.IsItemAttributeMetacontentAttribute;
 import org.sonatype.nexus.proxy.repository.Repository;
 import org.sonatype.nexus.proxy.storage.UnsupportedStorageOperationException;
 import org.sonatype.nexus.util.ItemPathUtils;
 import org.sonatype.nexus.util.SystemPropertiesHelper;
 
-@Component( role = FSPeer.class )
+/**
+ * The default FSPeer implementation, directly implementating it. There might be alternate implementations, like doing
+ * 2nd level caching and so on.
+ * 
+ * @author cstamas
+ */
+@Named
+@Singleton
 public class DefaultFSPeer
+    extends AbstractLoggingComponent
     implements FSPeer
 {
     private static final String HIDDEN_TARGET_SUFFIX = ".nx-upload";
-
-    @Requirement
-    private Logger logger;
-
-    protected Logger getLogger()
-    {
-        return logger;
-    }
 
     public boolean isReachable( Repository repository, ResourceStoreRequest request, File target )
         throws LocalStorageException
@@ -83,45 +81,89 @@ public class DefaultFSPeer
         if ( cl != null )
         {
             // we have _content_ (content or link), hence we store a file
-            File hiddenTarget = getHiddenTarget( target );
+            final File hiddenTarget = getHiddenTarget( target, item );
+
+            // NEXUS-4550: Part One, saving to "hidden" (temp) file
+            // In case of error cleaning up only what needed
+            // No locking needed, AbstractRepository took care of that
+            FileOutputStream os = null;
+            InputStream is = null;
 
             try
             {
-                FileOutputStream os = new FileOutputStream( hiddenTarget );
+                os = new FileOutputStream( hiddenTarget );
 
-                InputStream is = cl.getContent();
+                is = cl.getContent();
 
-                try
-                {
-                    IOUtil.copy( is, os, getCopyStreamBufferSize() );
+                IOUtil.copy( is, os, getCopyStreamBufferSize() );
 
-                    os.flush();
-                }
-                finally
-                {
-                    IOUtil.close( is );
-
-                    IOUtil.close( os );
-                }
-
-                handleRenameOperation( hiddenTarget, target );
-
-                target.setLastModified( item.getModified() );
+                os.flush();
             }
             catch ( IOException e )
             {
-                if ( target != null )
-                {
-                    target.delete();
-                }
-
                 if ( hiddenTarget != null )
                 {
                     hiddenTarget.delete();
                 }
 
                 throw new LocalStorageException( "Got exception during storing on path "
-                    + item.getRepositoryItemUid().toString(), e );
+                    + item.getRepositoryItemUid().toString() + " (while writing to hiddenTarget: "
+                    + hiddenTarget.getAbsolutePath() + ")", e );
+            }
+            finally
+            {
+                IOUtil.close( is );
+
+                IOUtil.close( os );
+            }
+
+            // NEXUS-4550: Part Two, moving the "hidden" (temp) file to final location
+            // In case of error cleaning up both files
+            // Locking is needed, AbstractRepository got shared lock only for destination
+
+            // NEXUS-4550: FSPeer is the one that handles the rename in case of FS LS,
+            // so we need here to claim exclusive lock on actual UID to perform the rename
+            final RepositoryItemUidLock uidLock = item.getRepositoryItemUid().getLock();
+            uidLock.lock( Action.create );
+
+            // if we ARE NOT handling attributes, do proper cleanup in case of IOEx
+            // if we ARE handling attributes, leave backups in case of IOEx
+            final boolean isCleanupNeeded =
+                !item.getRepositoryItemUid().getBooleanAttributeValue( IsItemAttributeMetacontentAttribute.class );
+
+            try
+            {
+                handleRenameOperation( hiddenTarget, target );
+
+                target.setLastModified( item.getModified() );
+            }
+            catch ( IOException e )
+            {
+                if ( isCleanupNeeded )
+                {
+                    if ( target != null )
+                    {
+                        target.delete();
+                    }
+
+                    if ( hiddenTarget != null )
+                    {
+                        hiddenTarget.delete();
+                    }
+                }
+                else
+                {
+                    getLogger().warn(
+                        "No cleanup done for error that happened while trying to save attibutes of item {}, the backup is left as {}!",
+                        item.getRepositoryItemUid().toString(), hiddenTarget.getAbsolutePath() );
+                }
+
+                throw new LocalStorageException( "Got exception during storing on path "
+                    + item.getRepositoryItemUid().toString() + " (while moving to final destination)", e );
+            }
+            finally
+            {
+                uidLock.unlock();
             }
         }
         else
@@ -136,6 +178,10 @@ public class DefaultFSPeer
     public void shredItem( Repository repository, ResourceStoreRequest request, File target )
         throws ItemNotFoundException, UnsupportedStorageOperationException, LocalStorageException
     {
+        if ( getLogger().isDebugEnabled() )
+        {
+            getLogger().debug( "Deleting file: " + target.getAbsolutePath() );
+        }
         if ( target.isDirectory() )
         {
             try
@@ -177,8 +223,8 @@ public class DefaultFSPeer
             }
             catch ( IOException e )
             {
-                logger.warn( "Unable to move item, falling back to copy+delete: " + toTarget.getPath(),
-                    logger.isDebugEnabled() ? e : null );
+                getLogger().warn( "Unable to move item, falling back to copy+delete: " + toTarget.getPath(),
+                    getLogger().isDebugEnabled() ? e : null );
 
                 if ( fromTarget.isDirectory() )
                 {
@@ -205,7 +251,7 @@ public class DefaultFSPeer
                 else
                 {
                     // TODO throw exception?
-                    logger.error( "Unexpected item kind: " + toTarget.getClass() );
+                    getLogger().error( "Unexpected item kind: " + toTarget.getClass() );
                 }
                 shredItem( repository, from, fromTarget );
             }
@@ -267,11 +313,17 @@ public class DefaultFSPeer
 
     // ==
 
-    protected File getHiddenTarget( File target )
+    protected File getHiddenTarget( final File target, final StorageItem item )
+        throws LocalStorageException
     {
-        File hiddenTarget = new File( target.getParentFile(), target.getName() + HIDDEN_TARGET_SUFFIX );
-
-        return hiddenTarget;
+        try
+        {
+            return File.createTempFile( target.getName(), HIDDEN_TARGET_SUFFIX, target.getParentFile() );
+        }
+        catch ( IOException e )
+        {
+            throw new LocalStorageException( e.getMessage(), e );
+        }
     }
 
     protected void mkParentDirs( Repository repository, File target )

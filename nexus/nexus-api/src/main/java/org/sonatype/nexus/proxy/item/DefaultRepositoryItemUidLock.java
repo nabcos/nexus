@@ -1,52 +1,38 @@
+/**
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
+ *
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
+ *
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
+ */
 package org.sonatype.nexus.proxy.item;
 
-import java.util.concurrent.atomic.AtomicInteger;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.sonatype.nexus.proxy.access.Action;
 
 public class DefaultRepositoryItemUidLock
     implements RepositoryItemUidLock
 {
-    private final RepositoryItemUidFactory factory;
-
-    private final RepositoryItemUid uid;
+    private final String key;
 
     private final LockResource contentLock;
 
-    private final AtomicInteger released;
-
-    protected DefaultRepositoryItemUidLock( final RepositoryItemUidFactory factory, final RepositoryItemUid uid,
-                                            final LockResource contentLock )
+    protected DefaultRepositoryItemUidLock( final String key, final LockResource contentLock )
     {
         super();
 
-        this.factory = factory;
-
-        this.uid = uid;
+        this.key = key;
 
         this.contentLock = contentLock;
-
-        this.released = new AtomicInteger( 0 );
-    }
-
-    @Override
-    public RepositoryItemUid getRepositoryItemUid()
-    {
-        return uid;
     }
 
     @Override
     public void lock( final Action action )
-        throws IllegalStateException
     {
-        if ( released.get() != 0 )
-        {
-            throw new IllegalStateException(
-                "This instance of DefaultRepositoryItemUidLock has been released, it is not usable for locking anymore!" );
-        }
-
         if ( action.isReadAction() )
         {
             contentLock.lockShared();
@@ -57,61 +43,46 @@ public class DefaultRepositoryItemUidLock
         }
     }
 
+    @Override
     public void unlock()
-        throws IllegalStateException
     {
-        if ( released.get() != 0 )
-        {
-            throw new IllegalStateException(
-                "This instance of DefaultRepositoryItemUidLock has been released, it is not usable for locking anymore!" );
-        }
-
         contentLock.unlock();
     }
-
-    @Override
-    public void release()
+    
+    public boolean hasLocksHeld()
     {
-        // This below is problematic: this is untrue, since new INSTANCES will be asked for, but they will all use
-        // _shared_ lock.
-        // Hence, a boxed use will try to release it, but since it's unaware of being boxed, will not be able to.
-        // TODO: think about this more...
-        //
-        // if ( contentLock.hasLocksHeld() )
-        // {
-        // throw new IllegalStateException(
-        // "This instance of DefaultRepositoryItemUidLock still has locks associated with caller thread!" );
-        // }
-
-        if ( released.compareAndSet( 0, 1 ) )
-        {
-            factory.releaseUidLock( this );
-        }
+        return contentLock.hasLocksHeld();
     }
 
     // ==
 
-    // this below is mere for "transition period" to ease debugging or leak detection
-
-    private static Logger logger = LoggerFactory.getLogger( DefaultRepositoryItemUidLock.class );
-
-    public void finalize()
-        throws Throwable
+    @Override
+    public int hashCode()
     {
-        try
-        {
-            if ( released.compareAndSet( 0, 1 ) )
-            {
-                factory.releaseUidLock( this );
+        final int prime = 31;
+        int result = 1;
+        result = prime * result + ( ( key == null ) ? 0 : key.hashCode() );
+        return result;
+    }
 
-                logger.error( "Memory leak: UIDLock for UID {} not released properly, lock status is {}!",
-                    getRepositoryItemUid(), contentLock.toString() );
-            }
-        }
-        finally
+    @Override
+    public boolean equals( Object obj )
+    {
+        if ( this == obj )
+            return true;
+        if ( obj == null )
+            return false;
+        if ( getClass() != obj.getClass() )
+            return false;
+        DefaultRepositoryItemUidLock other = (DefaultRepositoryItemUidLock) obj;
+        if ( key == null )
         {
-            super.finalize();
+            if ( other.key != null )
+                return false;
         }
+        else if ( !key.equals( other.key ) )
+            return false;
+        return true;
     }
 
     // for Debug/tests vvv

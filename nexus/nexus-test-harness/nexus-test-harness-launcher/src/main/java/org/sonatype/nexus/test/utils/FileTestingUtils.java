@@ -1,20 +1,14 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.test.utils;
 
@@ -35,12 +29,12 @@ import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
-import org.apache.commons.io.FilenameUtils;
-import org.apache.log4j.Logger;
 import org.codehaus.plexus.util.DirectoryScanner;
 import org.codehaus.plexus.util.FileUtils;
 import org.codehaus.plexus.util.IOUtil;
 import org.codehaus.plexus.util.InterpolationFilterReader;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Simple File testing utilities.
@@ -48,7 +42,7 @@ import org.codehaus.plexus.util.InterpolationFilterReader;
 public class FileTestingUtils
 {
 
-    private static final Logger LOG = Logger.getLogger( FileTestingUtils.class );
+    private static final Logger LOG = LoggerFactory.getLogger( FileTestingUtils.class );
 
     private static final int BUFFER_SIZE = 0x1000;
 
@@ -56,7 +50,7 @@ public class FileTestingUtils
 
     /**
      * Creates a SHA1 hash from a file.
-     * 
+     *
      * @param file The file to be digested.
      * @return An SHA1 hash based on the contents of the file.
      * @throws IOException
@@ -81,7 +75,7 @@ public class FileTestingUtils
 
     /**
      * Creates a SHA1 hash from a url.
-     * 
+     *
      * @param url The URL to opened and digested.
      * @return An SHA1 hash based on the contents of the URL.
      * @throws IOException
@@ -105,7 +99,7 @@ public class FileTestingUtils
 
     /**
      * Creates a SHA1 hash from the contents of a String.
-     * 
+     *
      * @param data the String to be digested.
      * @return An SHA1 hash based on the contents of the String.
      * @throws IOException
@@ -121,7 +115,7 @@ public class FileTestingUtils
 
     /**
      * Creates a SHA1 hash from an InputStream.
-     * 
+     *
      * @param in Inputstream to be digested.
      * @returnn SHA1 hash based on the contents of the stream.
      * @throws IOException
@@ -177,7 +171,7 @@ public class FileTestingUtils
         return false;
     }
 
-    @SuppressWarnings( "unchecked" )
+    @SuppressWarnings( "rawtypes" )
     public static File getTestFile( Class clazz, String filename )
     {
         String resource = clazz.getName().replace( '.', '/' ) + "Resources/" + filename;
@@ -272,7 +266,7 @@ public class FileTestingUtils
         String[] files = scan.getIncludedFiles();
         for ( String fileName : files )
         {
-            String extension = FilenameUtils.getExtension( fileName );
+            String extension = FileUtils.getExtension( fileName );
             File sourceFile = new File( from, fileName );
             File destFile = new File( dest, fileName );
             destFile.getParentFile().mkdirs();

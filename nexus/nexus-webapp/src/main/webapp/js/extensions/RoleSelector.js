@@ -1,20 +1,14 @@
 /*
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 /**
  * A RoleManager is used to display assigned roles and privileges (optional) in a grid, with a toolbar
@@ -157,7 +151,7 @@ Ext.extend(RoleManager, Ext.grid.GridPanel, {
                     height : 400,
                     width : 750,
                     usePrivileges : this.usePrivileges,
-                    hiddenRoleIds : this.getSelectedRoleIds(),
+                    hiddenRoleIds : this.getHiddenRoleIds(),
                     hiddenPrivilegeIds : this.getSelectedPrivilegeIds(),
                     title : 'Add Roles' + (this.usePrivileges ? ' and Privileges' : '')
                   }],
@@ -222,9 +216,7 @@ Ext.extend(RoleManager, Ext.grid.GridPanel, {
         }
         return null;
       },
-      setSelectedRoleIds : function(roleIds, reload) {
-        this.selectedRoleIds = [];
-
+      append : function (roleIds, to) {
         if (roleIds != null)
         {
           if (!Ext.isArray(roleIds))
@@ -237,10 +229,34 @@ Ext.extend(RoleManager, Ext.grid.GridPanel, {
             var roleId = this.getIdFromObject(roleIds[i]);
             if (roleId != null)
             {
-              this.selectedRoleIds.push(roleId);
+              to.push(roleId);
             }
           }
         }
+      },
+      setHiddenRoleIds : function(roleIds, reload) {
+        this.hiddenRoleIds = [];
+        
+        this.append(roleIds, this.hiddenRoleIds);
+        
+        this.validate();
+
+        if (reload)
+        {
+          this.reloadStore();
+        }
+      },
+      getHiddenRoleIds : function() {
+        // NEXUS-4371: merge selected and explicitly hidden roles
+        var hidden = [];
+        this.append(this.hiddenRoleIds, hidden);
+        this.append(this.getSelectedRoleIds(), hidden);
+        return hidden;
+      },
+      setSelectedRoleIds : function(roleIds, reload) {
+        this.selectedRoleIds = [];
+        
+        this.append(roleIds, this.selectedRoleIds);
 
         if (this.selectedRoleIds.length == 0)
         {
@@ -260,23 +276,8 @@ Ext.extend(RoleManager, Ext.grid.GridPanel, {
       },
       setSelectedPrivilegeIds : function(privilegeIds, reload) {
         this.selectedPrivilegeIds = [];
-
-        if (privilegeIds != null)
-        {
-          if (!Ext.isArray(privilegeIds))
-          {
-            privilegeIds = [privilegeIds];
-          }
-
-          for (var i = 0; i < privilegeIds.length; i++)
-          {
-            var privilegeId = this.getIdFromObject(privilegeIds[i]);
-            if (privilegeId != null)
-            {
-              this.selectedPrivilegeIds.push(privilegeId);
-            }
-          }
-        }
+        
+        this.append(privilegeIds, this.selectedPrivilegeIds);
 
         this.validate();
 
@@ -361,25 +362,30 @@ Ext.extend(RoleManager, Ext.grid.GridPanel, {
 
         return id;
       },
+      showErrorMarker: function(msg) {
+        var elp = this.getEl();
+        if (!this.errorEl) {
+            this.errorEl = elp.createChild({
+                cls: "x-form-invalid-msg"
+            });
+            this.errorEl.setWidth(elp.getWidth(true));
+            this.errorEl.setStyle("border: 0 solid #fff")
+        }
+        this.errorEl.update(msg);
+        elp.setStyle({
+            "background-color": "#fee",
+            border: "1px solid #dd7870"
+        });
+        Ext.form.Field.msgFx.normal.show(this.errorEl, this)
+      },
+      markInvalid: function(msg) {
+       this.showErrorMarker(msg);
+      },
       validate : function() {
         if (this.doValidation && !this.userId && this.selectedRoleIds.length == 0 && this.selectedPrivilegeIds.length == 0)
         {
-          var elp = this.getEl();
-
-          if (!this.errorEl)
-          {
-            this.errorEl = elp.createChild({
-                  cls : 'x-form-invalid-msg'
-                });
-            this.errorEl.setWidth(elp.getWidth(true));
-            this.errorEl.setStyle('border: 0 solid #fff');
-          }
-          this.errorEl.update('You must select at least 1 role' + (this.usePrivileges ? ' or privilege' : ''));
-          elp.setStyle({
-                'background-color' : '#fee',
-                border : '1px solid #dd7870'
-              });
-          Ext.form.Field.msgFx['normal'].show(this.errorEl, this);
+          var msg = "You must select at least 1 role" + (this.usePrivileges ? " or privilege" : "");
+          this.showErrorMarker(msg);
           return false;
         }
 

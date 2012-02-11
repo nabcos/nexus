@@ -1,20 +1,14 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.test.utils;
 
@@ -22,10 +16,11 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.apache.log4j.Logger;
 import org.restlet.data.MediaType;
 import org.restlet.data.Method;
 import org.restlet.data.Response;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.sonatype.nexus.configuration.model.CRepository;
 import org.sonatype.nexus.integrationtests.AbstractNexusIntegrationTest;
 import org.sonatype.nexus.integrationtests.RequestFacade;
@@ -33,7 +28,6 @@ import org.sonatype.nexus.rest.model.RepositoryGroupListResource;
 import org.sonatype.nexus.rest.model.RepositoryGroupListResourceResponse;
 import org.sonatype.nexus.rest.model.RepositoryGroupMemberRepository;
 import org.sonatype.nexus.rest.model.RepositoryGroupResource;
-import org.sonatype.nexus.rest.model.RepositoryGroupResourceResponse;
 import org.sonatype.plexus.rest.representation.XStreamRepresentation;
 import org.testng.Assert;
 
@@ -44,34 +38,26 @@ public class GroupMessageUtil
 {
     public static final String SERVICE_PART = "service/local/repo_groups";
 
-    private XStream xstream;
+    private static final Logger LOG = LoggerFactory.getLogger( GroupMessageUtil.class );
 
-    private MediaType mediaType;
-
-    private static final Logger LOG = Logger.getLogger( GroupMessageUtil.class );
+    private final RepositoryGroupsNexusRestClient groupNRC;
 
     public GroupMessageUtil( AbstractNexusIntegrationTest test, XStream xstream, MediaType mediaType )
     {
         super( test );
-        this.xstream = xstream;
-        this.mediaType = mediaType;
+        groupNRC = new RepositoryGroupsNexusRestClient(
+            RequestFacade.getNexusRestClient(),
+            xstream,
+            mediaType
+        );
     }
 
     public RepositoryGroupResource createGroup( RepositoryGroupResource group )
         throws IOException
     {
+        RepositoryGroupResource responseResource = groupNRC.createGroup( group );
 
-        Response response = this.sendMessage( Method.POST, group );
-
-        if ( !response.getStatus().isSuccess() )
-        {
-            String responseText = response.getEntity().getText();
-            Assert.fail( "Could not create Repository: " + response.getStatus() + ":\n" + responseText );
-        }
-
-        RepositoryGroupResource responseResource = this.getResourceFromResponse( response );
-
-        this.validateResourceResponse( group, responseResource );
+        validateResourceResponse( group, responseResource );
 
         return responseResource;
     }
@@ -142,104 +128,35 @@ public class GroupMessageUtil
         return repoIdList;
     }
 
-    public RepositoryGroupResource getGroup( String groupId )
-        throws IOException
-    {
-
-        Response response = RequestFacade.doGetRequest( SERVICE_PART + "/" + groupId );
-        String responseText = response.getEntity().getText();
-        LOG.debug( "responseText: \n" + responseText );
-
-        Assert.assertTrue( response.getStatus().isSuccess(),
-            "Failed to return Group: " + groupId + "\nResponse:\n" + responseText );
-
-        // this should use call to: getResourceFromResponse
-        XStreamRepresentation representation =
-            new XStreamRepresentation( XStreamFactory.getXmlXStream(), responseText, MediaType.APPLICATION_XML );
-
-        RepositoryGroupResourceResponse resourceResponse =
-            (RepositoryGroupResourceResponse) representation.getPayload( new RepositoryGroupResourceResponse() );
-
-        return resourceResponse.getData();
-    }
-
     public RepositoryGroupResource updateGroup( RepositoryGroupResource group )
         throws IOException
     {
-        Response response = this.sendMessage( Method.PUT, group );
-
-        if ( !response.getStatus().isSuccess() )
-        {
-            String responseText = response.getEntity().getText();
-            Assert.fail( "Could not update user: " + response.getStatus() + "\n" + responseText );
-        }
-
-        RepositoryGroupResource responseResource = this.getResourceFromResponse( response );
+        RepositoryGroupResource responseResource = groupNRC.updateGroup( group );
 
         this.validateResourceResponse( group, responseResource );
 
         return responseResource;
     }
 
-    public Response sendMessage( Method method, RepositoryGroupResource resource )
-        throws IOException
-    {
-        return this.sendMessage( method, resource, resource.getId() );
-    }
-
-    public Response sendMessage( Method method, RepositoryGroupResource resource, String id )
-        throws IOException
-    {
-
-        XStreamRepresentation representation = new XStreamRepresentation( xstream, "", mediaType );
-
-        String idPart = ( method == Method.POST ) ? "" : "/" + id;
-        String serviceURI = SERVICE_PART + idPart;
-
-        RepositoryGroupResourceResponse repoResponseRequest = new RepositoryGroupResourceResponse();
-        repoResponseRequest.setData( resource );
-
-        // now set the payload
-        representation.setPayload( repoResponseRequest );
-
-        LOG.debug( "sendMessage: " + representation.getText() );
-
-        return RequestFacade.sendMessage( serviceURI, method, representation );
-    }
-
-    /**
-     * This should be replaced with a REST Call, but the REST client does not set the Accept correctly on GET's/
-     *
-     * @return
-     * @throws IOException
-     */
     public List<RepositoryGroupListResource> getList()
         throws IOException
     {
-        String responseText = RequestFacade.doGetRequest( SERVICE_PART ).getEntity().getText();
-        LOG.debug( "responseText: \n" + responseText );
-
-        XStreamRepresentation representation =
-            new XStreamRepresentation( XStreamFactory.getXmlXStream(), responseText, MediaType.APPLICATION_XML );
-
-        RepositoryGroupListResourceResponse resourceResponse =
-            (RepositoryGroupListResourceResponse) representation.getPayload( new RepositoryGroupListResourceResponse() );
-
-        return resourceResponse.getData();
-
+        return groupNRC.getList();
     }
 
-    public RepositoryGroupResource getResourceFromResponse( Response response )
+    public Response sendMessage( final Method method, final RepositoryGroupResource resource, final String id )
         throws IOException
     {
-        String responseString = response.getEntity().getText();
-        LOG.debug( " getResourceFromResponse: " + responseString );
+        return groupNRC.sendMessage( method, resource, id );
+    }
 
-        XStreamRepresentation representation = new XStreamRepresentation( xstream, responseString, mediaType );
-        RepositoryGroupResourceResponse resourceResponse =
-            (RepositoryGroupResourceResponse) representation.getPayload( new RepositoryGroupResourceResponse() );
-
-        return resourceResponse.getData();
+    /**
+     * IMPORTANT: Make sure to release the Response in a finally block when you are done with it.
+     */
+    public Response sendMessage( Method method, RepositoryGroupResource resource )
+        throws IOException
+    {
+        return groupNRC.sendMessage( method, resource, resource.getId() );
     }
 
     private void validateRepoInNexusConfig( RepositoryGroupResource group )
@@ -256,4 +173,9 @@ public class GroupMessageUtil
         this.validateRepoLists( expectedRepos, actualRepos );
     }
 
+    public RepositoryGroupResource getGroup( final String groupId )
+        throws IOException
+    {
+        return groupNRC.getGroup( groupId );
+    }
 }

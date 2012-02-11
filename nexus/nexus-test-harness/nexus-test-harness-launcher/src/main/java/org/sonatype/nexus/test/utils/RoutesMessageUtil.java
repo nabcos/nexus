@@ -1,36 +1,35 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.test.utils;
 
-import java.io.IOException;
+import static org.hamcrest.CoreMatchers.*;
+import static org.hamcrest.MatcherAssert.*;
+import static org.sonatype.nexus.test.utils.NexusRequestMatchers.*;
 
+import java.io.IOException;
 import java.net.URL;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 
-import org.apache.log4j.Logger;
 import org.codehaus.plexus.util.StringUtils;
+import org.hamcrest.text.IsEmptyString;
 import org.restlet.data.MediaType;
 import org.restlet.data.Method;
 import org.restlet.data.Response;
 import org.restlet.data.Status;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.sonatype.nexus.configuration.model.CPathMappingItem;
 import org.sonatype.nexus.integrationtests.AbstractNexusIntegrationTest;
 import org.sonatype.nexus.integrationtests.RequestFacade;
@@ -55,7 +54,7 @@ public class RoutesMessageUtil
 
     private MediaType mediaType;
 
-    private static final Logger LOG = Logger.getLogger( RoutesMessageUtil.class );
+    private static final Logger LOG = LoggerFactory.getLogger( RoutesMessageUtil.class );
 
     public RoutesMessageUtil( AbstractNexusIntegrationTest test, XStream xstream, MediaType mediaType )
     {
@@ -67,11 +66,21 @@ public class RoutesMessageUtil
     public RepositoryRouteResource getRoute( String routeId )
         throws IOException
     {
-        Response response = getRouteResponse( routeId );
+        Response response = null;
+        try {
+            response = getRouteResponse( routeId );
 
-        return this.getResourceFromResponse( response );
+            assertThat(response, isSuccessful());
+
+            return this.getResourceFromText( response.getEntity().getText() );
+        } finally {
+            RequestFacade.releaseResponse(response);
+        }
     }
 
+    /**
+     * IMPORTANT: Make sure to release the Response in a finally block when you are done with it.
+     */
     public Response getRouteResponse( String routeId )
         throws IOException
     {
@@ -79,6 +88,9 @@ public class RoutesMessageUtil
         return response;
     }
 
+    /**
+     * IMPORTANT: Make sure to release the Response in a finally block when you are done with it.
+     */
     public Response sendMessage( Method method, RepositoryRouteResource resource )
         throws IOException
     {
@@ -99,15 +111,24 @@ public class RoutesMessageUtil
         return RequestFacade.sendMessage( serviceURI, method, representation );
     }
 
+    /**
+     * Use {@link #getResourceFromText(String)} instead.
+     */
+    @Deprecated
     public RepositoryRouteResource getResourceFromResponse( Response response )
         throws IOException
     {
         String responseString = response.getEntity().getText();
         LOG.debug( "responseText: " + responseString );
 
-        Assert.assertFalse( StringUtils.isEmpty( responseString ), "Response text was empty." );
         Assert.assertTrue( response.getStatus().isSuccess(), response.getStatus() + "\n" + responseString );
 
+        return getResourceFromText( responseString );
+    }
+
+    public RepositoryRouteResource getResourceFromText( String responseString )
+    {
+        assertThat( responseString, not( IsEmptyString.isEmptyOrNullString() ) );
         XStreamRepresentation representation = new XStreamRepresentation( xstream, responseString, mediaType );
 
         RepositoryRouteResourceResponse resourceResponse =
@@ -188,12 +209,9 @@ public class RoutesMessageUtil
     {
         String serviceURI = "service/local/repo_routes";
 
-        Response response = RequestFacade.doGetRequest( serviceURI );
-        Status status = response.getStatus();
-        Assert.assertTrue( status.isSuccess(), "Unable to get routes: " + status.getDescription() );
-
+        String entityText = RequestFacade.doGetForText( serviceURI );
         XStreamRepresentation representation =
-            new XStreamRepresentation( XStreamFactory.getXmlXStream(), response.getEntity().getText(),
+            new XStreamRepresentation( XStreamFactory.getXmlXStream(), entityText,
                                        MediaType.APPLICATION_XML );
 
         RepositoryRouteListResourceResponse resourceResponse =

@@ -1,20 +1,14 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.client.rest;
 
@@ -27,7 +21,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 
-import org.apache.log4j.Logger;
 import org.codehaus.plexus.util.StringUtils;
 import org.restlet.Client;
 import org.restlet.Context;
@@ -40,9 +33,10 @@ import org.restlet.data.Request;
 import org.restlet.data.Response;
 import org.restlet.resource.Representation;
 import org.restlet.resource.StringRepresentation;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.sonatype.nexus.client.NexusClientException;
 import org.sonatype.nexus.client.NexusConnectionException;
-import org.sonatype.nexus.rest.NexusApplication;
 import org.sonatype.nexus.rest.XStreamInitializer;
 import org.sonatype.nexus.rest.model.NexusResponse;
 import org.sonatype.plexus.rest.representation.XStreamRepresentation;
@@ -64,7 +58,7 @@ public class RestClientHelper
 
     private static final String SERVICE_URL_PART = "service/local/";
 
-    private Logger logger = Logger.getLogger( getClass() );
+    private Logger logger = LoggerFactory.getLogger( getClass() );
 
     private XStream xstream;
 
@@ -77,9 +71,8 @@ public class RestClientHelper
         this.restContext = new Context();
         this.restClient = new Client( restContext, Protocol.HTTP );
 
-        NexusApplication napp = new NexusApplication();
-        xstream = napp.doConfigureXstream( new XStream( new LookAheadXppDriver() ) );
-        
+        xstream = org.sonatype.nexus.rest.model.XStreamConfigurator.configureXStream( new XStream( new LookAheadXppDriver() ) );
+
         XStreamInitializer.init( xstream );
     }
 

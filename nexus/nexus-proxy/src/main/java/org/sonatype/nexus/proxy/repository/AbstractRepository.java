@@ -1,20 +1,14 @@
 /**
- * Copyright (c) 2008-2011 Sonatype, Inc.
- * All rights reserved. Includes the third-party code listed at http://www.sonatype.com/products/nexus/attributions.
+ * Sonatype Nexus (TM) Open Source Version
+ * Copyright (c) 2007-2012 Sonatype, Inc.
+ * All rights reserved. Includes the third-party code listed at http://links.sonatype.com/products/nexus/oss/attributions.
  *
- * This program is free software: you can redistribute it and/or modify it only under the terms of the GNU Affero General
- * Public License Version 3 as published by the Free Software Foundation.
+ * This program and the accompanying materials are made available under the terms of the Eclipse Public License Version 1.0,
+ * which accompanies this distribution and is available at http://www.eclipse.org/legal/epl-v10.html.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License Version 3
- * for more details.
- *
- * You should have received a copy of the GNU Affero General Public License Version 3 along with this program.  If not, see
- * http://www.gnu.org/licenses.
- *
- * Sonatype Nexus (TM) Open Source Version is available from Sonatype, Inc. Sonatype and Sonatype Nexus are trademarks of
- * Sonatype, Inc. Apache Maven is a trademark of the Apache Foundation. M2Eclipse is a trademark of the Eclipse Foundation.
- * All other trademarks are the property of their respective owners.
+ * Sonatype Nexus (TM) Professional Version is available from Sonatype, Inc. "Sonatype" and "Sonatype Nexus" are trademarks
+ * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
+ * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
 package org.sonatype.nexus.proxy.repository;
 
@@ -32,7 +26,9 @@ import org.sonatype.configuration.ConfigurationException;
 import org.sonatype.nexus.configuration.Configurator;
 import org.sonatype.nexus.configuration.application.ApplicationConfiguration;
 import org.sonatype.nexus.configuration.model.CRepositoryExternalConfigurationHolderFactory;
-import org.sonatype.nexus.feeds.FeedRecorder;
+import org.sonatype.nexus.logging.Slf4jPlexusLogger;
+import org.sonatype.nexus.mime.MimeRulesSource;
+import org.sonatype.nexus.mime.MimeSupport;
 import org.sonatype.nexus.mime.MimeUtil;
 import org.sonatype.nexus.proxy.AccessDeniedException;
 import org.sonatype.nexus.proxy.IllegalOperationException;
@@ -48,12 +44,13 @@ import org.sonatype.nexus.proxy.attributes.AttributesHandler;
 import org.sonatype.nexus.proxy.cache.CacheManager;
 import org.sonatype.nexus.proxy.cache.PathCache;
 import org.sonatype.nexus.proxy.events.RepositoryConfigurationUpdatedEvent;
-import org.sonatype.nexus.proxy.events.RepositoryEventExpireCaches;
+import org.sonatype.nexus.proxy.events.RepositoryEventExpireNotFoundCaches;
 import org.sonatype.nexus.proxy.events.RepositoryEventLocalStatusChanged;
 import org.sonatype.nexus.proxy.events.RepositoryEventRecreateAttributes;
 import org.sonatype.nexus.proxy.events.RepositoryItemEventDelete;
 import org.sonatype.nexus.proxy.events.RepositoryItemEventRetrieve;
-import org.sonatype.nexus.proxy.events.RepositoryItemEventStore;
+import org.sonatype.nexus.proxy.events.RepositoryItemEventStoreCreate;
+import org.sonatype.nexus.proxy.events.RepositoryItemEventStoreUpdate;
 import org.sonatype.nexus.proxy.item.AbstractStorageItem;
 import org.sonatype.nexus.proxy.item.ByteArrayContentLocator;
 import org.sonatype.nexus.proxy.item.ContentGenerator;
@@ -75,6 +72,7 @@ import org.sonatype.nexus.proxy.storage.local.LocalRepositoryStorage;
 import org.sonatype.nexus.proxy.storage.local.LocalStorageContext;
 import org.sonatype.nexus.proxy.target.TargetRegistry;
 import org.sonatype.nexus.proxy.target.TargetSet;
+import org.sonatype.nexus.proxy.utils.RepositoryStringUtils;
 import org.sonatype.nexus.proxy.walker.DefaultWalkerContext;
 import org.sonatype.nexus.proxy.walker.Walker;
 import org.sonatype.nexus.proxy.walker.WalkerException;
@@ -103,8 +101,7 @@ public abstract class AbstractRepository
     extends ConfigurableRepository
     implements Repository
 {
-    @Requirement
-    private Logger logger;
+    private Logger logger = Slf4jPlexusLogger.getPlexusLogger( getClass() );
 
     @Requirement
     private ApplicationConfiguration applicationConfiguration;
@@ -131,7 +128,7 @@ public abstract class AbstractRepository
     private MimeUtil mimeUtil;
 
     @Requirement
-    private FeedRecorder feedRecorder;
+    private MimeSupport mimeSupport;
 
     @Requirement( role = ContentGenerator.class )
     private Map<String, ContentGenerator> contentGenerators;
@@ -157,6 +154,9 @@ public abstract class AbstractRepository
     /** if non-indexable -> indexable change occured, need special handling after save */
     private boolean madeSearchable = false;
 
+    /** if local status changed, need special handling after save */
+    private boolean localStatusChanged = false;
+
     // --
 
     protected Logger getLogger()
@@ -164,14 +164,21 @@ public abstract class AbstractRepository
         return logger;
     }
 
+    @Deprecated
     protected MimeUtil getMimeUtil()
     {
         return mimeUtil;
     }
 
-    protected FeedRecorder getFeedRecorder()
+    protected MimeSupport getMimeSupport()
     {
-        return feedRecorder;
+        return mimeSupport;
+    }
+
+    @Override
+    public MimeRulesSource getMimeRulesSource()
+    {
+        return MimeRulesSource.NOOP;
     }
 
     // ==
@@ -197,6 +204,8 @@ public abstract class AbstractRepository
 
         this.madeSearchable = false;
 
+        this.localStatusChanged = false;
+
         return wasDirty;
     }
 
@@ -206,6 +215,8 @@ public abstract class AbstractRepository
         this.localUrlChanged = false;
 
         this.madeSearchable = false;
+
+        this.localStatusChanged = false;
 
         return super.rollbackChanges();
     }
@@ -222,6 +233,7 @@ public abstract class AbstractRepository
 
         event.setLocalUrlChanged( this.localUrlChanged );
         event.setMadeSearchable( this.madeSearchable );
+        event.setLocalStatusChanged( localStatusChanged );
 
         return event;
     }
@@ -360,6 +372,8 @@ public abstract class AbstractRepository
 
             super.setLocalStatus( localStatus );
 
+            localStatusChanged = true;
+
             getApplicationEventMulticaster().notifyEventListeners(
                 new RepositoryEventLocalStatusChanged( this, oldLocalStatus, localStatus ) );
         }
@@ -408,34 +422,10 @@ public abstract class AbstractRepository
             return;
         }
 
-        if ( StringUtils.isEmpty( request.getRequestPath() ) )
-        {
-            request.setRequestPath( RepositoryItemUid.PATH_ROOT );
-        }
-
-        request.setRequestLocalOnly( true );
-
-        getLogger().info(
-            "Expiring local cache in repository ID='" + getId() + "' from path='" + request.getRequestPath() + "'" );
-
-        // 1st, expire all the files below path
-        DefaultWalkerContext ctx = new DefaultWalkerContext( this, request );
-
-        ctx.getProcessors().add( new ExpireCacheWalker( this ) );
-
-        try
-        {
-            getWalker().walk( ctx );
-        }
-        catch ( WalkerException e )
-        {
-            if ( !( e.getWalkerContext().getStopCause() instanceof ItemNotFoundException ) )
-            {
-                // everything that is not ItemNotFound should be reported,
-                // otherwise just neglect it
-                throw e;
-            }
-        }
+        // at this level (we are not proxy) expireCaches() actually boils down to "expire NFC" only
+        // we are NOT crawling local storage content to flip the isExpired flags to true on a hosted
+        // repo, since those attributes in case of hosted (or any other non-proxy) repositories does not have any
+        // meaning
 
         // 2nd, remove the items from NFC
         expireNotFoundCaches( request );
@@ -453,16 +443,18 @@ public abstract class AbstractRepository
             request.setRequestPath( RepositoryItemUid.PATH_ROOT );
         }
 
-        getLogger().info(
-            "Clearing NFC cache in repository ID='" + getId() + "' from path='" + request.getRequestPath() + "'" );
+        getLogger().debug(
+            String.format( "Clearing NFC cache in repository %s from path=\"%s\"",
+                RepositoryStringUtils.getHumanizedNameString( this ), request.getRequestPath() ) );
 
+        boolean cacheAltered = false;
         // remove the items from NFC
         if ( RepositoryItemUid.PATH_ROOT.equals( request.getRequestPath() ) )
         {
             // purge all
             if ( getNotFoundCache() != null )
             {
-                getNotFoundCache().purge();
+                cacheAltered = getNotFoundCache().purge();
             }
         }
         else
@@ -470,20 +462,36 @@ public abstract class AbstractRepository
             // purge below and above path only
             if ( getNotFoundCache() != null )
             {
-                getNotFoundCache().removeWithParents( request.getRequestPath() );
+                boolean altered1 = getNotFoundCache().removeWithParents( request.getRequestPath() );
+                boolean altered2 = getNotFoundCache().removeWithChildren( request.getRequestPath() );
+                cacheAltered = altered1 || altered2;
+            }
+        }
 
-                getNotFoundCache().removeWithChildren( request.getRequestPath() );
+        if( getLogger().isDebugEnabled() )
+        {
+            if( cacheAltered )
+            {
+                getLogger().info(
+                    String.format( "NFC for repository %s from path=\"%s\" was cleared.",
+                        RepositoryStringUtils.getHumanizedNameString( this ), request.getRequestPath() ) );
+            }
+            else
+            {
+                getLogger().debug(
+                    String.format( "Clear NFC for repository %s from path=\"%s\" did not alter cache.",
+                        RepositoryStringUtils.getHumanizedNameString( this ), request.getRequestPath() ) );
             }
         }
 
         getApplicationEventMulticaster().notifyEventListeners(
-            new RepositoryEventExpireCaches( this, request.getRequestPath() ) );
+            new RepositoryEventExpireNotFoundCaches( this, request.getRequestPath(),
+                request.getRequestContext().flatten(), cacheAltered ) );
     }
 
     public Collection<String> evictUnusedItems( ResourceStoreRequest request, final long timestamp )
     {
-        // this is noop at this "level"
-
+        // this is noop at hosted level
         return Collections.emptyList();
     }
 
@@ -500,7 +508,8 @@ public abstract class AbstractRepository
         }
 
         getLogger().info(
-            "Rebuilding attributes in repository ID='" + getId() + "' from path='" + request.getRequestPath() + "'" );
+            String.format( "Rebuilding item attributes in repository %s from path=\"%s\"",
+                RepositoryStringUtils.getHumanizedNameString( this ), request.getRequestPath() ) );
 
         RecreateAttributesWalker walkerProcessor = new RecreateAttributesWalker( this, initialData );
 
@@ -644,11 +653,11 @@ public abstract class AbstractRepository
 
         DefaultStorageFileItem fItem =
             new DefaultStorageFileItem( this, request, true, true, new PreparedContentLocator( is,
-                getMimeUtil().getMimeType( request.getRequestPath() ) ) );
+                getMimeSupport().guessMimeTypeFromPath( getMimeRulesSource(), request.getRequestPath() ) ) );
 
         if ( userAttributes != null )
         {
-            fItem.getAttributes().putAll( userAttributes );
+            fItem.getRepositoryItemAttributes().putAll( userAttributes );
         }
 
         storeItem( false, fItem );
@@ -666,7 +675,7 @@ public abstract class AbstractRepository
 
         if ( userAttributes != null )
         {
-            coll.getAttributes().putAll( userAttributes );
+            coll.getRepositoryItemAttributes().putAll( userAttributes );
         }
 
         storeItem( false, coll );
@@ -714,28 +723,18 @@ public abstract class AbstractRepository
         return targetRegistry.hasAnyApplicableTarget( this );
     }
 
-    public Action getResultingActionOnWrite( ResourceStoreRequest rsr )
+    public Action getResultingActionOnWrite( final ResourceStoreRequest rsr )
+        throws LocalStorageException
     {
-        try
-        {
-            boolean isInLocalStorage = getLocalStorage().containsItem( this, rsr );
+        final boolean isInLocalStorage = getLocalStorage().containsItem( this, rsr );
 
-            if ( isInLocalStorage )
-            {
-                return Action.update;
-            }
-            else
-            {
-                return Action.create;
-            }
+        if ( isInLocalStorage )
+        {
+            return Action.update;
         }
-        catch ( StorageException e )
+        else
         {
-            getLogger().error(
-                "Could not resolve the local presence of \"" + rsr.getRequestPath() + "\" path in repository ID=\""
-                    + getId() + "\"!", e );
-
-            return null;
+            return Action.create;
         }
     }
 
@@ -761,7 +760,7 @@ public abstract class AbstractRepository
 
         final RepositoryItemUid uid = createUid( request.getRequestPath() );
 
-        final RepositoryItemUidLock uidLock = uid.createLock();
+        final RepositoryItemUidLock uidLock = uid.getLock();
 
         uidLock.lock( Action.read );
 
@@ -792,8 +791,9 @@ public abstract class AbstractRepository
                 else
                 {
                     getLogger().info(
-                        "The file in repository ID='" + this.getId() + "' on path='" + uid.getPath()
-                            + "' should be generated by ContentGeneratorId='" + key + "', but it does not exists!" );
+                        String.format(
+                            "The file in repository %s on path=\"%s\" should be generated by ContentGeneratorId=%s, but component does not exists!",
+                            RepositoryStringUtils.getHumanizedNameString( this ), uid.getPath(), key ) );
 
                     throw new ItemNotFoundException( request, this );
                 }
@@ -826,8 +826,7 @@ public abstract class AbstractRepository
                 getLogger().debug( getId() + " retrieveItem() :: NOT FOUND " + uid.toString() );
             }
 
-            // if not local/remote only, add it to NFC
-            if ( !request.isRequestLocalOnly() && !request.isRequestRemoteOnly() )
+            if ( shouldAddToNotFoundCache( request ) )
             {
                 addToNotFoundCache( request );
             }
@@ -837,7 +836,6 @@ public abstract class AbstractRepository
         finally
         {
             uidLock.unlock();
-            uidLock.release();
         }
     }
 
@@ -859,10 +857,10 @@ public abstract class AbstractRepository
         final RepositoryItemUid fromUid = createUid( from.getRequestPath() );
 
         final RepositoryItemUid toUid = createUid( to.getRequestPath() );
-        
-        final RepositoryItemUidLock fromUidLock = fromUid.createLock();
 
-        final RepositoryItemUidLock toUidLock = toUid.createLock();
+        final RepositoryItemUidLock fromUidLock = fromUid.getLock();
+
+        final RepositoryItemUidLock toUidLock = toUid.getLock();
 
         fromUidLock.lock( Action.read );
         toUidLock.lock( Action.create );
@@ -895,10 +893,8 @@ public abstract class AbstractRepository
         finally
         {
             toUidLock.unlock();
-            toUidLock.release();
 
             fromUidLock.unlock();
-            fromUidLock.release();
         }
     }
 
@@ -936,8 +932,8 @@ public abstract class AbstractRepository
         maintainNotFoundCache( request );
 
         final RepositoryItemUid uid = createUid( request.getRequestPath() );
-        
-        final RepositoryItemUidLock uidLock = uid.createLock();
+
+        final RepositoryItemUidLock uidLock = uid.getLock();
 
         uidLock.lock( Action.delete );
 
@@ -984,7 +980,6 @@ public abstract class AbstractRepository
         finally
         {
             uidLock.unlock();
-            uidLock.release();
         }
     }
 
@@ -1002,29 +997,59 @@ public abstract class AbstractRepository
         }
 
         final RepositoryItemUid uid = createUid( item.getPath() );
-        
-        final RepositoryItemUidLock uidLock = uid.createLock();
 
         // replace UID to own one
         item.setRepositoryItemUid( uid );
 
-        uidLock.lock( Action.create );
+        // NEXUS-4550: This "fake" UID/lock here is introduced only to serialize uploaders
+        // This will catch immediately an uploader if an upload already happens
+        // and prevent deadlocks, since uploader still does not have
+        // shared lock
+        final RepositoryItemUid uploaderUid = createUid( item.getPath() + ".storeItem()" );
+
+        final RepositoryItemUidLock uidUploaderLock = uploaderUid.getLock();
+
+        uidUploaderLock.lock( Action.create );
+
+        final Action action = getResultingActionOnWrite( item.getResourceStoreRequest() );
 
         try
         {
-            // store it
-            getLocalStorage().storeItem( this, item );
+            // NEXUS-4550: we are shared-locking the actual UID (to not prevent downloaders while
+            // we save to temporary location. But this depends on actual LS backend actually...)
+            // but we exclusive lock uploaders to serialize them!
+            // And the LS has to take care of whatever stricter locking it has to use or not
+            // Think: RDBMS LS or some trickier LS implementations for example
+            final RepositoryItemUidLock uidLock = uid.getLock();
+
+            uidLock.lock( Action.read );
+
+            try
+            {
+                // store it
+                getLocalStorage().storeItem( this, item );
+            }
+            finally
+            {
+                uidLock.unlock();
+            }
         }
         finally
         {
-            uidLock.unlock();
-            uidLock.release();
+            uidUploaderLock.unlock();
         }
 
         // remove the "request" item from n-cache if there
         removeFromNotFoundCache( item.getResourceStoreRequest() );
 
-        getApplicationEventMulticaster().notifyEventListeners( new RepositoryItemEventStore( this, item ) );
+        if ( Action.create.equals( action ) )
+        {
+            getApplicationEventMulticaster().notifyEventListeners( new RepositoryItemEventStoreCreate( this, item ) );
+        }
+        else
+        {
+            getApplicationEventMulticaster().notifyEventListeners( new RepositoryItemEventStoreUpdate( this, item ) );
+        }
     }
 
     public Collection<StorageItem> list( boolean fromTask, ResourceStoreRequest request )
@@ -1146,6 +1171,7 @@ public abstract class AbstractRepository
      * 
      * @param path the path
      */
+    @Override
     public void addToNotFoundCache( ResourceStoreRequest request )
     {
         if ( isNotFoundCacheActive() )
@@ -1206,10 +1232,11 @@ public abstract class AbstractRepository
         // check the write policy
         enforceWritePolicy( request, action );
 
-        if ( isExposed() )
-        {
-            getAccessManager().decide( this, request, action );
-        }
+        // NXCM-3600: this if was an old remnant, is not needed
+        // if ( isExposed() )
+        // {
+        getAccessManager().decide( this, request, action );
+        // }
 
         return checkRequestProcessors( request, action );
     }
@@ -1284,14 +1311,6 @@ public abstract class AbstractRepository
             {
                 getLogger().debug( "Item " + request.toString() + " found in local storage." );
             }
-
-            // this "self correction" is needed to nexus build for himself the needed metadata
-            if ( localItem.getRemoteChecked() == 0 )
-            {
-                getAttributesHandler().touchItemRemoteChecked( this, request );
-
-                localItem = getLocalStorage().retrieveItem( this, request );
-            }
         }
         catch ( ItemNotFoundException ex )
         {
@@ -1310,4 +1329,18 @@ public abstract class AbstractRepository
     {
         return action.isReadAction();
     }
+
+    /**
+     * Whether or not the requested path should be added to NFC. Item will be added to NFC if is not local/remote only.
+     * 
+     * @param request resource store request
+     * @return true if requested path should be added to NFC
+     * @since 2.0
+     */
+    protected boolean shouldAddToNotFoundCache( final ResourceStoreRequest request )
+    {
+        // if not local/remote only, add it to NFC
+        return !request.isRequestLocalOnly() && !request.isRequestRemoteOnly();
+    }
+
 }
