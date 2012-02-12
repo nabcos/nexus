@@ -29,20 +29,21 @@ import org.sonatype.sisu.pr.bundle.BundleAssembler;
 import org.sonatype.sisu.pr.bundle.ManagedBundle;
 import org.sonatype.sisu.pr.bundle.StorageManager;
 
-@Component(role = BundleAssembler.class, hint = "nexus.xml")
+@Component( role = BundleAssembler.class, hint = "nexus.xml" )
 public class NexusXmlHandler
     extends AbstractXmlHandler
     implements BundleAssembler
 {
+
     @Requirement
     private ConfigurationHelper configHelper;
-    
+
     @Requirement
     private NexusConfiguration nexusConfig;
-    
+
     @Requirement
     private StorageManager storageManager;
-    
+
     @SuppressWarnings( "deprecation" )
     @Override
     public boolean isParticipating( IssueSubmissionRequest request )
@@ -50,6 +51,7 @@ public class NexusXmlHandler
         return nexusConfig.getConfigurationModel() != null;
     }
 
+    @SuppressWarnings( "deprecation" )
     @Override
     public Bundle assemble( IssueSubmissionRequest request )
         throws IssueSubmissionException
@@ -58,18 +60,20 @@ public class NexusXmlHandler
         try
         {
             ManagedBundle bundle = storageManager.createBundle( "nexus.xml", "application/xml" );
+            final Configuration configuration = configHelper.maskPasswords( nexusConfig.getConfigurationModel() );
 
-            @SuppressWarnings( "deprecation" )
-            Configuration configuration = configHelper.clone( nexusConfig.getConfigurationModel() );
-
-            configHelper.maskPasswords( configuration );
+            // No config ?
+            if ( configuration == null )
+            {
+                return null;
+            }
             NexusConfigurationXpp3Writer writer = new NexusConfigurationXpp3Writer();
-            
+
             out = bundle.getOutputStream();
             writer.write( out, configuration );
             out.close();
-            
-	        return bundle;
+
+            return bundle;
         }
         catch ( IOException e )
         {

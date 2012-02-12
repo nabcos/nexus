@@ -86,9 +86,10 @@
       <artifactId>sisu-mailer</artifactId>
     </dependency>
     <dependency>
-      <groupId>org.sonatype.spice</groupId>
-      <artifactId>plexus-swizzle</artifactId>
-    </dependency>
+      <groupId>org.sonatype.sisu.pr</groupId>
+      <artifactId>sisu-problem-reporter</artifactId>
+      <version>1.4</version>
+      </dependency>
     <dependency>
       <groupId>org.sonatype.spice</groupId>
       <artifactId>plexus-encryptor</artifactId>
